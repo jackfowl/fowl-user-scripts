@@ -156,29 +156,4 @@
 	} else {
 		repaginate();
 	}
-})();ntById("modal-qualidade-cartas");
-	    if (modal) modal.classList.add("open");
-	};
-	
-	  const icon = document.createElement("i");
-	  icon.style.fontSize = ".75em";
-	  icon.className = "fas fa-plus";
-	
-	  button.appendChild(icon);
-	  label.appendChild(button);
-	}
-
-  function repaginate() {
-    removeElements();
-    adjustElements();
-    setFocus();
-    reorderSelect();
-    addHintButton();
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", repaginate);
-  } else {
-    repaginate();
-  }
-})();
+})()
