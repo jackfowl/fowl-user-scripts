@@ -150,7 +150,9 @@
 
 	function isCarrinhoPage() {
 		return window.location.pathname.endsWith("carrinho") ||
-		       window.location.href.endsWith("carrinho");
+		       window.location.href.endsWith("carrinho") ||
+               window.location.pathname.endsWith("carrinho/index") ||
+		       window.location.href.endsWith("carrinho/index");
 	}
 
 	function injectCarrinhoStyles() {
