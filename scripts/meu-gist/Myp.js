@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Repaginate MYP
-// @version      1.3.0
-// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho na página de carrinho.
+// @version      1.4.0
+// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
 // @match        *://mypcards.com
 // @match        *://mypcards.com/*
@@ -150,9 +150,7 @@
 
 	function isCarrinhoPage() {
 		return window.location.pathname.endsWith("carrinho") ||
-		       window.location.href.endsWith("carrinho") ||
-               window.location.pathname.endsWith("carrinho/index") ||
-		       window.location.href.endsWith("carrinho/index");
+		       window.location.href.endsWith("carrinho");
 	}
 
 	function injectCarrinhoStyles() {
@@ -197,7 +195,6 @@
 			.myp-carrinho-body {
 				overflow: hidden;
 				transition: max-height 0.25s ease, opacity 0.2s ease;
-				max-height: 2000px;
 				opacity: 1;
 			}
 			.myp-carrinho-body.collapsed {
@@ -283,10 +280,26 @@
 				titulo = `Grupo ${index + 1}`;
 			}
 
-			// Conta os itens
-			const itens = grupo.querySelectorAll(".carrinho-item-card");
-			const qtdItens = itens.length;
-			const metaTexto = qtdItens > 0 ? `${qtdItens} item${qtdItens !== 1 ? "s" : ""}` : "";
+			// Soma as quantidades dos inputs e os totais por item
+			function calcGrupoMeta(container) {
+				let totalQtd = 0;
+				let totalValor = 0;
+
+				container.querySelectorAll(".carrinho-item-qtd-update").forEach(input => {
+					const v = parseInt(input.value, 10);
+					if (!isNaN(v)) totalQtd += v;
+				});
+
+				container.querySelectorAll(".carrinho-item-valor-total").forEach(el => {
+					// Texto pode ser "R$\u00a02,00" ou "R$ 2,00" — remove tudo que não seja dígito ou vírgula
+					const raw = el.textContent.replace(/[^\d,]/g, "").replace(",", ".");
+					const v = parseFloat(raw);
+					if (!isNaN(v)) totalValor += v;
+				});
+
+				const totalFmt = totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+				return `${totalQtd} un. / ${totalFmt}`;
+			}
 
 			// Cria o cabeçalho colapsável
 			const header = document.createElement("div");
@@ -298,7 +311,7 @@
 
 			const metaSpan = document.createElement("span");
 			metaSpan.className = "myp-carrinho-meta";
-			metaSpan.textContent = metaTexto;
+			metaSpan.textContent = calcGrupoMeta(grupo);
 
 			const toggleArrow = document.createElement("span");
 			toggleArrow.className = "myp-carrinho-toggle";
@@ -319,6 +332,27 @@
 
 			grupo.appendChild(header);
 			grupo.appendChild(body);
+
+			// Função de atualização do meta (usada pelos listeners abaixo)
+			function atualizarMeta() {
+				metaSpan.textContent = calcGrupoMeta(body);
+			}
+
+			// Reatividade 1: mudança de quantidade nos inputs
+			body.addEventListener("input", e => {
+				if (e.target.classList.contains("carrinho-item-qtd-update")) {
+					atualizarMeta();
+				}
+			});
+
+			// Reatividade 2: o site pode atualizar .carrinho-item-valor-total via AJAX
+			// ou remover itens do DOM — MutationObserver cobre ambos
+			const observer = new MutationObserver(atualizarMeta);
+			observer.observe(body, {
+				subtree: true,
+				childList: true,      // item removido
+				characterData: true,  // texto de valor-total atualizado inline
+			});
 
 			// Toggle ao clicar no cabeçalho
 			header.addEventListener("click", () => {
