@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         Repaginate MYP
-// @version      1.4.0
+// @name         _AwesoMYP_
+// @version      1.5.0
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -10,12 +10,19 @@
 // ==/UserScript==
 
 (function () {
-	const SELECTORS = "#main-menu-desktop, #main-menu-mobile, #header-spacer";
-	const FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
+	
+	
+	const Actions = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
+	const IDs_TO_REMOVE = "#main-menu-desktop, #main-menu-mobile, #header-spacer, #zestoque-card-search";
+	const CLS_TO_REMOVE = ".estoque-update .autocomplete-icon, .header-internal";
+	const YGO_FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
+	const PKM_FOIL_MAIN_OPTIONS = ["1", "6", "3"]; // Normal, Promo, Reverse Foil
 	const LANGUAGE_MAIN_OPTIONS = ["1", "2"]; //Português, Inglês
+	let action=Actions.NONE;
 
 	function removeElements() {
-		document.querySelectorAll(SELECTORS).forEach(el => el.remove());
+		document.querySelectorAll(IDs_TO_REMOVE).forEach(el => el.remove());
+		document.querySelectorAll(CLS_TO_REMOVE).forEach(el => el.remove());
 	}
 
 	function adjustElements() {
@@ -27,24 +34,39 @@
 		const input = document.getElementById("produtoSearchQuery");
 		if (!input) return;
         input.focus();
-        input.addEventListener("input", function () {
-            if (this.value.length === 4 && !this.value.endsWith("-en")) {
-                this.value = this.value + "-en";
-            }
+    	input.addEventListener("input", function () {
+        	switch (action) {
+			  case Actions.YGO:
+			    if (this.value.length === 4 && !this.value.endsWith("-en")) {
+			      this.value = this.value + "-en";
+			    }
+			    break;
+			
+			  case Actions.PKM:
+			    if (this.value.length === 3 && !this.value.endsWith("_")) {
+			      this.value = this.value + "_";
+			    }
+			    break;
+			}
         });
 	}
-
+	
 	function reorderFoilSelect() {
 		const select = document.getElementById("estoque-idfoil");
 		if (!select) return;
-
+		
 		const allOptions = Array.from(select.options);
+		let available = Array.from(select.options).map(opt => opt.value);
+		if (action === Actions.YGO) 
+			available = YGO_FOIL_MAIN_OPTIONS;
+		else if (action === Actions.PKM)
+			available = PKM_FOIL_MAIN_OPTIONS;
 
-		const priorityOptions = FOIL_MAIN_OPTIONS
+		const priorityOptions = available
 			.map(val => allOptions.find(opt => opt.value === val))
 			.filter(Boolean);
 
-		const otherOptions = allOptions.filter(opt => !FOIL_MAIN_OPTIONS.includes(opt.value));
+		const otherOptions = allOptions.filter(opt => !available.includes(opt.value));
 
 		select.innerHTML = "";
 
@@ -141,9 +163,11 @@
 	}
 
 	function setFirstEdition(){
-		const select = document.getElementById("estoque-printingestoque");
-		if (!select) return;
-		select.selectedIndex = 1;
+		if (action === Actions.YGO){
+			const select = document.getElementById("estoque-printingestoque");
+			if (!select) return;
+			select.selectedIndex = 1;
+		}
 	}
 
 	// ── Carrinho: colapsar/expandir ────────────────────────────────────────────
@@ -367,10 +391,21 @@
 			});
 		});
 	}
+	
+	function setCurrentAction() {
+		let actionElement=document.getElementById("produtoSearchForm");
+		if (actionElement){
+			if (actionElement.action.endsWith("yugioh"))
+				action = Actions.YGO;
+			else if (actionElement.action.endsWith("pokemon"))
+				action = Actions.PKM;
+		}
+	}
 
 	// ──────────────────────────────────────────────────────────────────────────
 
 	function repaginate() {
+		setCurrentAction();
 		removeElements();
 		adjustElements();
 		setFocus();
