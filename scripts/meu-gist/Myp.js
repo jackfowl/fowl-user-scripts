@@ -16,7 +16,7 @@
 	const IDs_TO_REMOVE = "#main-menu-desktop, #main-menu-mobile, #header-spacer, #zestoque-card-search";
 	const CLS_TO_REMOVE = ".estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal";
 	const YGO_FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
-	const PKM_FOIL_MAIN_OPTIONS = ["1", "6", "3"]; // Normal, Promo, Reverse Foil
+	const PKM_FOIL_MAIN_OPTIONS = ["1", "2", "3", "6"]; // Normal, Foil, Reverse Foil, Promo
 	const LANGUAGE_MAIN_OPTIONS = ["1", "2"]; //Português, Inglês
 	let action=Actions.NONE;
 
