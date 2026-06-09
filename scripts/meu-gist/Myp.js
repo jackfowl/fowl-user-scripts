@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.5.0
+// @version      1.5.1
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -10,11 +10,11 @@
 // ==/UserScript==
 
 (function () {
-	
-	
+
+
 	const Actions = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
 	const IDs_TO_REMOVE = "#main-menu-desktop, #main-menu-mobile, #header-spacer, #zestoque-card-search";
-	const CLS_TO_REMOVE = ".estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal";
+	const CLS_TO_REMOVE = ".estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
 	const YGO_FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
 	const PKM_FOIL_MAIN_OPTIONS = ["1", "2", "3", "6"]; // Normal, Foil, Reverse Foil, Promo
 	const LANGUAGE_MAIN_OPTIONS = ["1", "2"]; //Português, Inglês
@@ -28,6 +28,7 @@
 	function adjustElements() {
 		const header = document.getElementById("header");
 		if (header) header.style.position = "relative";
+        injectCardStyles();
 	}
 
 	function setFocus() {
@@ -41,7 +42,7 @@
 			      this.value = this.value + "-en";
 			    }
 			    break;
-			
+
 			  case Actions.PKM:
 			    if (this.value.length === 3 && !this.value.endsWith("_")) {
 			      this.value = this.value + "_";
@@ -50,17 +51,19 @@
 			}
         });
 	}
-	
+
 	function reorderFoilSelect() {
 		const select = document.getElementById("estoque-idfoil");
 		if (!select) return;
-		
+
 		const allOptions = Array.from(select.options);
 		let available = Array.from(select.options).map(opt => opt.value);
-		if (action === Actions.YGO) 
+		if (action === Actions.YGO) {
 			available = YGO_FOIL_MAIN_OPTIONS;
-		else if (action === Actions.PKM)
+        }
+		else if (action === Actions.PKM) {
 			available = PKM_FOIL_MAIN_OPTIONS;
+        }
 
 		const priorityOptions = available
 			.map(val => allOptions.find(opt => opt.value === val))
@@ -176,6 +179,22 @@
 		return window.location.pathname.endsWith("carrinho") ||
 		       window.location.href.endsWith("carrinho");
 	}
+
+    function injectCardStyles() {
+        if (document.getElementById("myp-card-styles")) return;
+
+		const style = document.createElement("style");
+		style.id = "myp-card-styles";
+        style.textContent = `
+  .carrossel-produtos .stream-list {
+    flex-wrap: wrap !important;
+  }
+  .card .card-btns {
+    display: block !important;
+  }
+`;
+        document.head.appendChild(style);
+    }
 
 	function injectCarrinhoStyles() {
 		if (document.getElementById("myp-carrinho-styles")) return;
@@ -374,8 +393,8 @@
 			const observer = new MutationObserver(atualizarMeta);
 			observer.observe(body, {
 				subtree: true,
-				childList: true,      // item removido
-				characterData: true,  // texto de valor-total atualizado inline
+				childList: true, // item removido
+				characterData: true, // texto de valor-total atualizado inline
 			});
 
 			// Toggle ao clicar no cabeçalho
@@ -391,14 +410,16 @@
 			});
 		});
 	}
-	
+
 	function setCurrentAction() {
 		let actionElement=document.getElementById("produtoSearchForm");
 		if (actionElement){
-			if (actionElement.action.endsWith("yugioh"))
+			if (actionElement.action.endsWith("yugioh")){
 				action = Actions.YGO;
-			else if (actionElement.action.endsWith("pokemon"))
+            }
+			else if (actionElement.action.endsWith("pokemon")) {
 				action = Actions.PKM;
+            }
 		}
 	}
 
