@@ -186,7 +186,7 @@
 		const style = document.createElement("style");
 		style.id = "myp-card-styles";
         style.textContent = `
-  .carrossel-produtos .stream-list {
+  .other-editions .carrossel-produtos .stream-list {
     flex-wrap: wrap !important;
   }
   .card .card-btns {
