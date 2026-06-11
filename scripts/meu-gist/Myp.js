@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.5.1
+// @version      1.6.0
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -10,8 +10,6 @@
 // ==/UserScript==
 
 (function () {
-
-
 	const Actions = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
 	const IDs_TO_REMOVE = "#main-menu-desktop, #main-menu-mobile, #header-spacer, #zestoque-card-search";
 	const CLS_TO_REMOVE = ".estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
@@ -20,6 +18,7 @@
 	const LANGUAGE_MAIN_OPTIONS = ["1", "2"]; //Português, Inglês
 	let action=Actions.NONE;
 
+    // ── Todas: ajustar layout ────────────────────────────────────────────
 	function removeElements() {
 		document.querySelectorAll(IDs_TO_REMOVE).forEach(el => el.remove());
 		document.querySelectorAll(CLS_TO_REMOVE).forEach(el => el.remove());
@@ -52,6 +51,19 @@
         });
 	}
 
+    function setCurrentAction() {
+		let actionElement=document.getElementById("produtoSearchForm");
+		if (actionElement){
+			if (actionElement.action.endsWith("yugioh")){
+				action = Actions.YGO;
+            }
+			else if (actionElement.action.endsWith("pokemon")) {
+				action = Actions.PKM;
+            }
+		}
+	}
+
+    // ── Cadastro: ajustar layout e opções mais utilizadas ────────────────────────────────────────────
 	function reorderFoilSelect() {
 		const select = document.getElementById("estoque-idfoil");
 		if (!select) return;
@@ -173,11 +185,32 @@
 		}
 	}
 
-	// ── Carrinho: colapsar/expandir ────────────────────────────────────────────
+    // ── Carrinho/Pedido: ordenar ────────────────────────────────────────────
+    function sortCarrinhoItens() {
+        if (!isCarrinhoPage()) return;
+
+        document.querySelectorAll(".carrinho-itens").forEach(grupo => {
+            const itens = Array.from(grupo.querySelectorAll(".carrinho-item-card"));
+            if (itens.length < 2) return;
+
+            const getName = el => {
+                const a = el.querySelector(".carrinho-item-name a");
+                return a ? a.textContent.trim().toLowerCase() : "";
+            };
+
+            itens.sort((a, b) => getName(a).localeCompare(getName(b), "pt-BR"));
+
+            // Re-insere na ordem correta (preserva outros elementos do grupo)
+            itens.forEach(item => grupo.appendChild(item));
+        });
+    }
+
+	// ── Carrinho/Pedido: colapsar/expandir ────────────────────────────────────────────
 
 	function isCarrinhoPage() {
-		return window.location.pathname.endsWith("carrinho") ||
-		       window.location.href.endsWith("carrinho");
+		return window.location.pathname.includes("carrinho") ||
+               window.location.pathname.includes("pedido") ||
+		       window.location.href.includes("carrinho");
 	}
 
     function injectCardStyles() {
@@ -305,6 +338,7 @@
 
 			controls.appendChild(btnExpandAll);
 			controls.appendChild(btnCollapseAll);
+            addColecaoButton(controls);
 			primeiroGrupo.parentElement.insertBefore(controls, primeiroGrupo);
 		}
 
@@ -313,26 +347,26 @@
 			if (grupo.dataset.mypCollapsible) return;
 			grupo.dataset.mypCollapsible = "1";
 
-			// Tenta extrair um título representativo do grupo
-			// Procura por nome de vendedor, loja ou qualquer título dentro do grupo
-			let titulo = "";
-			const nomeEl = grupo.querySelector(".carrinho-vendedor, .vendedor-nome, .store-name, h2, h3, h4, [class*='vendedor'], [class*='seller'], [class*='store']");
-			if (nomeEl) {
-				titulo = nomeEl.textContent.trim();
-			} else {
-				titulo = `Grupo ${index + 1}`;
-			}
+		    let titulo = `Grupo ${index + 1}`;
 
 			// Soma as quantidades dos inputs e os totais por item
 			function calcGrupoMeta(container) {
 				let totalQtd = 0;
 				let totalValor = 0;
 
-				container.querySelectorAll(".carrinho-item-qtd-update").forEach(input => {
-					const v = parseInt(input.value, 10);
-					if (!isNaN(v)) totalQtd += v;
-				});
-
+                let qtdes = container.querySelectorAll("input.carrinho-item-qtd-update");
+                if (qtdes && qtdes.length > 0) {
+                   qtdes.forEach(input => {
+                       const q = parseInt(input.value, 10);
+                       if (!isNaN(q)) totalQtd += q;
+                   });
+                } else {
+                   qtdes = container.querySelectorAll(".carrinho-detalhe-item-qtd p span.h2");
+                   qtdes.forEach(span => {
+                       const q = parseInt(span.textContent, 10);
+                       if (!isNaN(q)) totalQtd += q;
+                   });
+                }
 				container.querySelectorAll(".carrinho-item-valor-total").forEach(el => {
 					// Texto pode ser "R$\u00a02,00" ou "R$ 2,00" — remove tudo que não seja dígito ou vírgula
 					const raw = el.textContent.replace(/[^\d,]/g, "").replace(",", ".");
@@ -411,19 +445,157 @@
 		});
 	}
 
-	function setCurrentAction() {
-		let actionElement=document.getElementById("produtoSearchForm");
-		if (actionElement){
-			if (actionElement.action.endsWith("yugioh")){
-				action = Actions.YGO;
-            }
-			else if (actionElement.action.endsWith("pokemon")) {
-				action = Actions.PKM;
-            }
-		}
-	}
+	// ── Carrinho: avaliar existencia na colecao────────────────────────────────
+    function injectColecaoStyles() {
+        if (document.getElementById("myp-colecao-styles")) return;
 
-	// ──────────────────────────────────────────────────────────────────────────
+        const style = document.createElement("style");
+        style.id = "myp-colecao-styles";
+        style.textContent = `
+        .myp-colecao-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.75em;
+            color: #2e7d32;
+            background: #e8f5e9;
+            border: 1px solid #a5d6a7;
+            border-radius: 4px;
+            padding: 2px 7px;
+            margin-top: 4px;
+            margin-left: 8px;
+        }
+        .myp-colecao-badge i {
+            font-size: 0.95em;
+        }
+        .myp-colecao-loading {
+            display: inline-block;
+            font-size: 0.75em;
+            color: #aaa;
+            margin-top: 4px;
+            margin-left: 8px;
+        }
+    `;
+        document.head.appendChild(style);
+    }
+
+    function addColecaoButton(controlsEl) {
+        injectColecaoStyles();
+
+        const btn = document.createElement("button");
+        btn.id = "myp-btn-colecao";
+        btn.textContent = "🔍 Verificar coleção";
+        btn.onclick = async () => {
+            btn.disabled = true;
+
+            const itens = Array.from(document.querySelectorAll(".carrinho-item-card"));
+            const total = itens.length;
+
+            if (total === 0) {
+                btn.textContent = "✔ Já verificado";
+                return;
+            }
+
+            let done = 0;
+            for (const item of itens) {
+                await checkColecaoItem(item);
+                done++;
+                btn.textContent = `🔍 Verificando... (${done}/${total})`;
+            }
+
+            btn.textContent = "✔ Coleção verificada";
+        };
+
+        const btnLimpar = document.createElement("button");
+        btnLimpar.textContent = "🗑 Limpar cache";
+        btnLimpar.onclick = () => {
+            sessionStorage.removeItem(COLECAO_KEY);
+            btnLimpar.textContent = "✔ Cache limpo";
+            setTimeout(() => { btnLimpar.textContent = "🗑 Limpar cache"; }, 2000);
+        };
+
+        controlsEl.appendChild(btn);
+        controlsEl.appendChild(btnLimpar);
+    }
+
+    const COLECAO_KEY = "myp-colecao-checked";
+
+    function loadColecaoCache() {
+        try {
+            return JSON.parse(sessionStorage.getItem(COLECAO_KEY) || "{}");
+        } catch {
+            return {};
+        }
+    }
+
+    function saveColecaoCache(cache) {
+        try {
+            sessionStorage.setItem(COLECAO_KEY, JSON.stringify(cache));
+        } catch {}
+    }
+
+    function getColecaoItemKey(itemEl) {
+        const anchor = itemEl.querySelector(".carrinho-item-name a");
+        if (!anchor) return null;
+        return anchor.textContent.trim();
+    }
+
+    async function checkColecaoItem(itemEl) {
+        const anchor = itemEl.querySelector(".carrinho-item-name a");
+        if (!anchor) return;
+
+        const key = getColecaoItemKey(itemEl);
+        const nameEl = itemEl.querySelector(".carrinho-item-name");
+        if (!nameEl) return;
+        const nameP = nameEl.querySelector("p");
+        const cache = loadColecaoCache();
+
+        if (key && key in cache) {
+            if (cache[key]) {
+                const badge = document.createElement("span");
+                badge.className = "myp-colecao-badge";
+                badge.innerHTML = `<i class="fas fa-book-open"></i> Na coleção`;
+                nameP.appendChild(badge);
+            }
+            return;
+        }
+
+        const loading = document.createElement("span");
+        loading.className = "myp-colecao-loading";
+        loading.textContent = "verificando...";
+        nameP.appendChild(loading);
+
+        try {
+            const response = await fetch(anchor.href, { credentials: "include" });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const html = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+
+            const naColecao = !!doc.querySelector("i.fas.fa-book-open.fa-1x") ||
+                  !!doc.querySelector("div.minha-colecao");
+
+            loading.remove();
+
+            if (key) {
+                cache[key] = naColecao;
+                saveColecaoCache(cache);
+            }
+
+            if (naColecao) {
+                const badge = document.createElement("span");
+                badge.className = "myp-colecao-badge";
+                badge.innerHTML = `<i class="fas fa-book-open"></i> Na coleção`;
+                nameP.appendChild(badge);
+            }
+        } catch (err) {
+            loading.textContent = "erro ao verificar";
+            console.warn("[AwesoMYP] checkColecaoItem falhou:", anchor.href, err);
+        }
+    }
+
+    // ── Repaginar────────────────────────────────────────────────────────────────
 
 	function repaginate() {
 		setCurrentAction();
@@ -435,6 +607,7 @@
 		reorderLanguageSelect();
 		addLanguageButton();
 		setFirstEdition();
+        sortCarrinhoItens();
 		collapseCarrinhoItens();
 	}
 
