@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.7.0
+// @version      1.6.1
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -498,13 +498,12 @@
             const total = itens.length;
 
             if (total === 0) {
-                btn.textContent = "✔ Já verificado";
+                btn.textContent = "Carrinho Vazio";
                 return;
             }
 
             let done = 0;
             for (const item of itens) {
-                if (done > 7) break;
                 await checkColecaoItem(item);
                 done++;
                 btn.textContent = `🔍 Verificando... (${done}/${total})`;
@@ -609,7 +608,7 @@
         if (naColecao.qtde > 0) {
             const badge = document.createElement("span");
             badge.className = "myp-colecao-badge";
-            badge.innerHTML = `<i class="fas fa-book-open"></i> Na coleção [${naColecao.qtde}${naColecao.multiplas ? "*" : ""}]`;
+            badge.innerHTML = `<i class="fas fa-book-open"></i> ${naColecao.qtde}${naColecao.multiplas ? "*" : ""}`;
             nameP.appendChild(badge);
         }
     }
