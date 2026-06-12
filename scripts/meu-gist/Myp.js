@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.6.1
+// @version      1.6.0
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -213,6 +213,11 @@
 		       window.location.href.includes("carrinho");
 	}
 
+    function isDesejosPage() {
+		return window.location.pathname.includes("desejos") ||
+		       window.location.href.includes("desejos");
+	}
+
     function injectCardStyles() {
         if (document.getElementById("myp-card-styles")) return;
 
@@ -344,7 +349,6 @@
 
 			controls.appendChild(btnExpandAll);
 			controls.appendChild(btnCollapseAll);
-            addColecaoButton(controls);
 			primeiroGrupo.parentElement.parentElement.insertBefore(controls, primeiroGrupo.parentElement);
 		}
 
@@ -458,6 +462,10 @@
         const style = document.createElement("style");
         style.id = "myp-colecao-styles";
         style.textContent = `
+        .myp-collection-controls {
+            display: flex;
+			gap: 8px;
+        }
         .myp-colecao-badge {
             display: inline-flex;
             align-items: center;
@@ -485,20 +493,38 @@
         document.head.appendChild(style);
     }
 
-    function addColecaoButton(controlsEl) {
+    function addColecaoButton() {
+        let controlsEl;
+        if (isCarrinhoPage()) {
+            controlsEl = document.getElementById("myp-carrinho-controls")
+        } else if (isDesejosPage()) {
+            controlsEl = document.querySelector("ul.pagination li.first");
+        }
+        if (!controlsEl) return;
+console.log(controlsEl);
         injectColecaoStyles();
+        let controls = document.getElementById("myp-collection-controls");
+        if (!controls) {
+            controls = document.createElement("div");
+            controls.id = "myp-collection-controls";
+            controls.className = "myp-collection-controls";
+        }
 
         const btn = document.createElement("button");
         btn.id = "myp-btn-colecao";
         btn.textContent = "🔍 Verificar coleção";
         btn.onclick = async () => {
             btn.disabled = true;
-
-            const itens = Array.from(document.querySelectorAll(".carrinho-item-card"));
+            let itens = [];
+            if(isCarrinhoPage){
+                itens = Array.from(document.querySelectorAll(".carrinho-item-card"));
+            } else {
+                itens = Array.from(document.querySelectorAll("div.card-btns a.btn-small"));
+            }
             const total = itens.length;
 
             if (total === 0) {
-                btn.textContent = "Carrinho Vazio";
+                btn.textContent = "Nada a Verificar";
                 return;
             }
 
@@ -520,8 +546,9 @@
             setTimeout(() => { btnLimpar.textContent = "🗑 Limpar cache"; }, 2000);
         };
 
-        controlsEl.appendChild(btn);
-        controlsEl.appendChild(btnLimpar);
+        controls.appendChild(btn);
+        controls.appendChild(btnLimpar);
+        controlsEl.appendChild(controls);
     }
 
     const COLECAO_KEY = "myp-colecao-checked";
@@ -627,6 +654,7 @@
 		setFirstEdition();
         sortCarrinhoItens();
 		collapseCarrinhoItens();
+        addColecaoButton();
 	}
 
 	if (document.readyState === "loading") {
