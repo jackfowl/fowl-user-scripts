@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.6.0
+// @version      1.7.0
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -244,6 +244,7 @@
 				padding: 6px 4px;
 				border-radius: 4px;
 				transition: background 0.15s;
+                border-color: #00949d;
 			}
 			.myp-carrinho-header:hover {
 				background: rgba(0, 0, 0, 0.04);
@@ -283,7 +284,6 @@
 				gap: 8px;
 			}
 			.myp-carrinho-controls button {
-				font-size: 0.78em;
 				padding: 2px 10px;
 				cursor: pointer;
 				border: 1px solid #ccc;
@@ -291,6 +291,12 @@
 				background: #f5f5f5;
 				color: #555;
 				transition: background 0.15s;
+                color: #00949d;
+                border-color: #00949d;
+                font-weight: 500;
+                font-style: normal;
+                font-size: 16px;
+                letter-spacing: .5px;
 			}
 			.myp-carrinho-controls button:hover {
 				background: #e8e8e8;
@@ -339,7 +345,7 @@
 			controls.appendChild(btnExpandAll);
 			controls.appendChild(btnCollapseAll);
             addColecaoButton(controls);
-			primeiroGrupo.parentElement.insertBefore(controls, primeiroGrupo);
+			primeiroGrupo.parentElement.parentElement.insertBefore(controls, primeiroGrupo.parentElement);
 		}
 
 		grupos.forEach((grupo, index) => {
@@ -498,6 +504,7 @@
 
             let done = 0;
             for (const item of itens) {
+                if (done > 7) break;
                 await checkColecaoItem(item);
                 done++;
                 btn.textContent = `🔍 Verificando... (${done}/${total})`;
@@ -509,7 +516,7 @@
         const btnLimpar = document.createElement("button");
         btnLimpar.textContent = "🗑 Limpar cache";
         btnLimpar.onclick = () => {
-            sessionStorage.removeItem(COLECAO_KEY);
+            localStorage.removeItem(COLECAO_KEY);
             btnLimpar.textContent = "✔ Cache limpo";
             setTimeout(() => { btnLimpar.textContent = "🗑 Limpar cache"; }, 2000);
         };
@@ -522,7 +529,7 @@
 
     function loadColecaoCache() {
         try {
-            return JSON.parse(sessionStorage.getItem(COLECAO_KEY) || "{}");
+            return JSON.parse(localStorage.getItem(COLECAO_KEY) || "{}");
         } catch {
             return {};
         }
@@ -530,7 +537,7 @@
 
     function saveColecaoCache(cache) {
         try {
-            sessionStorage.setItem(COLECAO_KEY, JSON.stringify(cache));
+            localStorage.setItem(COLECAO_KEY, JSON.stringify(cache));
         } catch {}
     }
 
@@ -540,7 +547,26 @@
         return anchor.textContent.trim();
     }
 
+    async function getDoc(href) {
+        const response = await fetch(href, { credentials: "include" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const html = await response.text();
+        const parser = new DOMParser();
+        return parser.parseFromString(html, "text/html");
+    }
+
+    function getQuantidadeItem(doc){
+        let qtd = 0;
+        const qtdeEl = doc.querySelectorAll('.minha-colecao td.estoque-lista-quantidadeestoque');
+        for (const q of qtdeEl){
+            qtd += parseInt(q.textContent.split(" ")[0], 10);
+        }
+        return qtd;
+    }
+
     async function checkColecaoItem(itemEl) {
+        let naColecao = {qtde: 0, multiplas: false};
         const anchor = itemEl.querySelector(".carrinho-item-name a");
         if (!anchor) return;
 
@@ -550,48 +576,41 @@
         const nameP = nameEl.querySelector("p");
         const cache = loadColecaoCache();
 
-        if (key && key in cache) {
-            if (cache[key]) {
-                const badge = document.createElement("span");
-                badge.className = "myp-colecao-badge";
-                badge.innerHTML = `<i class="fas fa-book-open"></i> Na coleção`;
-                nameP.appendChild(badge);
-            }
-            return;
-        }
-
         const loading = document.createElement("span");
         loading.className = "myp-colecao-loading";
         loading.textContent = "verificando...";
         nameP.appendChild(loading);
 
-        try {
-            const response = await fetch(anchor.href, { credentials: "include" });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const html = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, "text/html");
-
-            const naColecao = !!doc.querySelector("i.fas.fa-book-open.fa-1x") ||
-                  !!doc.querySelector("div.minha-colecao");
-
-            loading.remove();
-
-            if (key) {
-                cache[key] = naColecao;
-                saveColecaoCache(cache);
+        if (key && key in cache && cache[key]) {
+            naColecao = cache[key];
+        } else {
+            try {
+                const doc = await getDoc(anchor.href);
+                naColecao.qtde = getQuantidadeItem(doc);
+                const outros = doc.querySelectorAll("i.fas.fa-book-open.fa-1x");
+                if (outros.length > 0) {
+                    naColecao.multiplas = true;
+                    for (const i of outros){
+                        const subDoc = await getDoc(i.parentElement.href);
+                        naColecao.qtde += getQuantidadeItem(subDoc);
+                    }
+                }
+                if (key) {
+                    cache[key] = naColecao;
+                    saveColecaoCache(cache);
+                }
+            } catch (err) {
+                naColecao.total = 0;
+                loading.textContent = "erro ao verificar";
+                console.warn("[AwesoMYP] checkColecaoItem falhou:", anchor.href, err);
             }
-
-            if (naColecao) {
-                const badge = document.createElement("span");
-                badge.className = "myp-colecao-badge";
-                badge.innerHTML = `<i class="fas fa-book-open"></i> Na coleção`;
-                nameP.appendChild(badge);
-            }
-        } catch (err) {
-            loading.textContent = "erro ao verificar";
-            console.warn("[AwesoMYP] checkColecaoItem falhou:", anchor.href, err);
+        }
+        loading.remove();
+        if (naColecao.qtde > 0) {
+            const badge = document.createElement("span");
+            badge.className = "myp-colecao-badge";
+            badge.innerHTML = `<i class="fas fa-book-open"></i> Na coleção [${naColecao.qtde}${naColecao.multiplas ? "*" : ""}]`;
+            nameP.appendChild(badge);
         }
     }
 
