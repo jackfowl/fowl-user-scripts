@@ -1,13 +1,5 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.7.1
-// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
-// @author       JackFowl
-// @match        *://mypcards.com
-// @match        *://mypcards.com/*
-// @match        *://*.mypcards.com/*
-// @icon         https://mypcards.com/android-icon-144x144.png// ==UserScript==
-// @name         _AwesoMYP_
 // @version      1.7.0
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
