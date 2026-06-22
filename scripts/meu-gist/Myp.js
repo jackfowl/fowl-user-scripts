@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.6.0
+// @version      1.7.0
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -10,18 +10,57 @@
 // ==/UserScript==
 
 (function () {
-	const Actions = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
-	const IDs_TO_REMOVE = "#main-menu-desktop, #main-menu-mobile, #header-spacer, #zestoque-card-search";
-	const CLS_TO_REMOVE = ".estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
+	const CardGame = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
+	const Actions = Object.freeze({ NONE: 0, CART: 1, ORDER: 2, WISH: 3, CREATE: 4, UPDATE: 5 });
+	const IDs_TO_REMOVE = "#dataenvioestoque-link, #btn-salvar-incluir, #main-menu-desktop, #main-menu-mobile, #header-spacer, #estoque-card-search";
+	const CLS_TO_REMOVE = ".myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
+	const IDs_TO_REMOVE_USER = "#titulo-cards, #usuario-pastas-marcas";
+	const CLS_TO_REMOVE_USER = ".usuario-titulo-com-estrelas";
 	const YGO_FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
 	const PKM_FOIL_MAIN_OPTIONS = ["1", "2", "3", "6"]; // Normal, Foil, Reverse Foil, Promo
 	const LANGUAGE_MAIN_OPTIONS = ["1", "2"]; //Português, Inglês
+	let tcg=CardGame.NONE;
 	let action=Actions.NONE;
 
+	function wait(ms) {
+		return new Promise(resolve => setTimeout(resolve, ms));
+	}
+	
+	// ── Todas: informação sobre a página atual───────────────
+	function isCarrinhoPage() {
+		return window.location.pathname.includes("carrinho") ||
+		       window.location.href.includes("carrinho");
+	}
+	
+	function isPedidoPage() {
+		return window.location.pathname.includes("pedido") ||
+		       window.location.href.includes("pedido");
+	}
+
+    function isDesejosPage() {
+		return window.location.pathname.includes("desejos") ||
+		       window.location.href.includes("desejos");
+	}
+	
+	function isCreatePage() {
+		return window.location.pathname.includes("create") ||
+		       window.location.href.includes("create");
+	}
+	
+	function isUpdatePage() {
+		return window.location.pathname.includes("update") ||
+		       window.location.href.includes("update");
+	}
+	
+	function hasCart(){
+    	return action === Actions.CART || action === Actions.ORDER;
+    }
     // ── Todas: ajustar layout ────────────────────────────────────────────
 	function removeElements() {
 		document.querySelectorAll(IDs_TO_REMOVE).forEach(el => el.remove());
 		document.querySelectorAll(CLS_TO_REMOVE).forEach(el => el.remove());
+		document.querySelectorAll(IDs_TO_REMOVE_USER).forEach(el => el.remove());
+		document.querySelectorAll(CLS_TO_REMOVE_USER).forEach(el => el.remove());
 	}
 
 	function adjustElements() {
@@ -35,14 +74,14 @@
 		if (!input) return;
         input.focus();
     	input.addEventListener("input", function () {
-        	switch (action) {
-			  case Actions.YGO:
+        	switch (tcg) {
+			  case CardGame.YGO:
 			    if (this.value.length === 4 && !this.value.endsWith("-en")) {
 			      this.value = this.value + "-en";
 			    }
 			    break;
 
-			  case Actions.PKM:
+			  case CardGame.PKM:
 			    if (this.value.length === 3 && !this.value.endsWith("_")) {
 			      this.value = this.value + "_";
 			    }
@@ -51,29 +90,43 @@
         });
 	}
 
-    function setCurrentAction() {
-		let actionElement=document.getElementById("produtoSearchForm");
-		if (actionElement){
-			if (actionElement.action.endsWith("yugioh")){
-				action = Actions.YGO;
+    function setCurrentFlow() {
+		let tcgElement=document.getElementById("produtoSearchForm");
+		if (tcgElement){
+			if (tcgElement.action.endsWith("yugioh")){
+				tcg = CardGame.YGO;
             }
-			else if (actionElement.action.endsWith("pokemon")) {
-				action = Actions.PKM;
+			else if (tcgElement.action.endsWith("pokemon")) {
+				tcg = CardGame.PKM;
             }
+		}
+		if (tcg !== CardGame.NONE){
+			if (isCarrinhoPage()){
+				action = Actions.CART;
+			} else if (isPedidoPage()){
+				action = Actions.ORDER;
+			} else if (isDesejosPage()){
+				action = Actions.WISH;
+			} else if (isCreatePage()){
+				action = Actions.CREATE;
+			} else if (isUpdatePage()){
+				action = Actions.UPDATE;
+			}
 		}
 	}
 
     // ── Cadastro: ajustar layout e opções mais utilizadas ────────────────────────────────────────────
 	function reorderFoilSelect() {
+		if (action !== Actions.CREATE) return;
 		const select = document.getElementById("estoque-idfoil");
 		if (!select) return;
 
 		const allOptions = Array.from(select.options);
 		let available = Array.from(select.options).map(opt => opt.value);
-		if (action === Actions.YGO) {
+		if (tcg === CardGame.YGO) {
 			available = YGO_FOIL_MAIN_OPTIONS;
         }
-		else if (action === Actions.PKM) {
+		else if (tcg === CardGame.PKM) {
 			available = PKM_FOIL_MAIN_OPTIONS;
         }
 
@@ -91,6 +144,7 @@
 	}
 
 	function addFoilButton() {
+		if (action !== Actions.CREATE) return;
 		const label = document.querySelector(".field-estoque-idfoil label");
 		if (!label) return;
 
@@ -125,6 +179,7 @@
 	}
 
 	function reorderLanguageSelect() {
+		if (action !== Actions.CREATE) return;
 		const select = document.getElementById("estoque-ididioma");
 		if (!select) return;
 
@@ -144,6 +199,7 @@
 	}
 
 	function addLanguageButton() {
+		if (action !== Actions.CREATE) return;
 		const label = document.querySelector(".field-estoque-ididioma label");
 		if (!label) return;
 
@@ -176,18 +232,30 @@
 		button.appendChild(icon);
 		label.appendChild(button);
 	}
+	
+	function isEstoque(){
+		return action === Actions.CREATE || action === Actions.UPDATE;
+	}
 
 	function setFirstEdition(){
-		if (action === Actions.YGO){
+		if (tcg === CardGame.YGO && isEstoque()){
 			const select = document.getElementById("estoque-printingestoque");
 			if (!select) return;
 			select.selectedIndex = 1;
 		}
 	}
 
+	function setOnSale(){
+		if (isEstoque()){
+			const select = document.getElementById("estoque-statusestoque");
+			if (!select) return;
+			select.selectedIndex = 0;
+		}
+	}
+
     // ── Carrinho/Pedido: ordenar ────────────────────────────────────────────
     function sortCarrinhoItens() {
-        if (!isCarrinhoPage()) return;
+        if (action !== Actions.CART && action !== Actions.ORDER) return;
 
         document.querySelectorAll(".carrinho-itens").forEach(grupo => {
             const itens = Array.from(grupo.querySelectorAll(".carrinho-item-card"));
@@ -207,23 +275,25 @@
 
 	// ── Carrinho/Pedido: colapsar/expandir ────────────────────────────────────────────
 
-	function isCarrinhoPage() {
-		return window.location.pathname.includes("carrinho") ||
-               window.location.pathname.includes("pedido") ||
-		       window.location.href.includes("carrinho");
-	}
-
-    function isDesejosPage() {
-		return window.location.pathname.includes("desejos") ||
-		       window.location.href.includes("desejos");
-	}
-
     function injectCardStyles() {
         if (document.getElementById("myp-card-styles")) return;
 
 		const style = document.createElement("style");
 		style.id = "myp-card-styles";
         style.textContent = `
+  .estoque-create .content-box .form .grid .btn, .estoque-update .content-box .form .grid .btn {
+    margin-top: 6px;
+    min-width: unset;
+  }
+  .form-group {
+    margin-bottom: 6px !important;
+  }
+  .main {
+    padding: 6px !important;
+  }
+  #produto-index {
+    gap: 6px !important;
+  }
   .other-editions .carrossel-produtos .stream-list {
     flex-wrap: wrap !important;
   }
@@ -232,6 +302,7 @@
   }
 `;
         document.head.appendChild(style);
+        console.log(style);
     }
 
 	function injectCarrinhoStyles() {
@@ -240,6 +311,9 @@
 		const style = document.createElement("style");
 		style.id = "myp-carrinho-styles";
 		style.textContent = `
+		    .carrinho-da-loja { padding: 4px !important; }
+		    .carrinho-item-container-fix { gap: 4px !important; }
+		    .carrinho-item-card { gap: 4px !important; }
 			.myp-carrinho-header {
 				display: flex;
 				align-items: center;
@@ -311,7 +385,7 @@
 	}
 
 	function collapseCarrinhoItens() {
-		if (!isCarrinhoPage()) return;
+		if (!hasCart()) return;
 
 		injectCarrinhoStyles();
 
@@ -495,13 +569,12 @@
 
     function addColecaoButton() {
         let controlsEl;
-        if (isCarrinhoPage()) {
+        if (hasCart()) {
             controlsEl = document.getElementById("myp-carrinho-controls")
-        } else if (isDesejosPage()) {
+        } else if (action === Actions.WISH) {
             controlsEl = document.querySelector("ul.pagination li.first");
         }
         if (!controlsEl) return;
-console.log(controlsEl);
         injectColecaoStyles();
         let controls = document.getElementById("myp-collection-controls");
         if (!controls) {
@@ -516,7 +589,7 @@ console.log(controlsEl);
         btn.onclick = async () => {
             btn.disabled = true;
             let itens = [];
-            if(isCarrinhoPage){
+            if (action === Actions.CART || action === Actions.ORDER) {
                 itens = Array.from(document.querySelectorAll(".carrinho-item-card"));
             } else {
                 itens = Array.from(document.querySelectorAll("div.card-btns a.btn-small"));
@@ -527,12 +600,18 @@ console.log(controlsEl);
                 btn.textContent = "Nada a Verificar";
                 return;
             }
-
+			let time = 10;
             let done = 0;
             for (const item of itens) {
-                await checkColecaoItem(item);
-                done++;
                 btn.textContent = `🔍 Verificando... (${done}/${total})`;
+                const r = await checkColecaoItem(item, time);
+                if (r.failed) {
+                	time += 150;
+                	console.log( `🔍 Aguardando... ${time}ms`);
+                }
+                time -+ 50;
+                await wait(time);
+                done++;
             }
 
             btn.textContent = "✔ Coleção verificada";
@@ -591,8 +670,8 @@ console.log(controlsEl);
         return qtd;
     }
 
-    async function checkColecaoItem(itemEl) {
-        let naColecao = {qtde: 0, multiplas: false};
+    async function checkColecaoItem(itemEl, time) {
+        let naColecao = {qtde: 0, multiplas: false, failed: false};
         const anchor = itemEl.querySelector(".carrinho-item-name a");
         if (!anchor) return;
 
@@ -601,7 +680,7 @@ console.log(controlsEl);
         if (!nameEl) return;
         const nameP = nameEl.querySelector("p");
         const cache = loadColecaoCache();
-
+		
         const loading = document.createElement("span");
         loading.className = "myp-colecao-loading";
         loading.textContent = "verificando...";
@@ -617,6 +696,7 @@ console.log(controlsEl);
                 if (outros.length > 0) {
                     naColecao.multiplas = true;
                     for (const i of outros){
+                        await wait(time);
                         const subDoc = await getDoc(i.parentElement.href);
                         naColecao.qtde += getQuantidadeItem(subDoc);
                     }
@@ -627,23 +707,29 @@ console.log(controlsEl);
                 }
             } catch (err) {
                 naColecao.total = 0;
+                naColecao.failed = true;
                 loading.textContent = "erro ao verificar";
-                console.warn("[AwesoMYP] checkColecaoItem falhou:", anchor.href, err);
+                console.warn("[AwesoMYP] checkColecaoItem falhou:", anchor.textContent);
             }
         }
-        loading.remove();
+        
+        if (!naColecao.failed) {
+        	loading.remove();
+        }
+        
         if (naColecao.qtde > 0) {
             const badge = document.createElement("span");
             badge.className = "myp-colecao-badge";
             badge.innerHTML = `<i class="fas fa-book-open"></i> ${naColecao.qtde}${naColecao.multiplas ? "*" : ""}`;
             nameP.appendChild(badge);
         }
+        return naColecao;
     }
 
     // ── Repaginar────────────────────────────────────────────────────────────────
 
 	function repaginate() {
-		setCurrentAction();
+		setCurrentFlow();
 		removeElements();
 		adjustElements();
 		setFocus();
@@ -652,6 +738,7 @@ console.log(controlsEl);
 		reorderLanguageSelect();
 		addLanguageButton();
 		setFirstEdition();
+		setOnSale();
         sortCarrinhoItens();
 		collapseCarrinhoItens();
         addColecaoButton();
