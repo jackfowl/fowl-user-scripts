@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         _AwesoMYP_
 // @version      1.8.0
-// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos.
+// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos. Navegar entre itens repetidos.
 // @author       JackFowl
 // @match        *://mypcards.com
 // @match        *://mypcards.com/*
@@ -105,12 +105,27 @@
 	function hasCart(){
     	return action === Actions.CART || action === Actions.ORDER;
     }
+
+    function getCarrinhoControls(){
+        return document.getElementById("amyp-carrinho-controls");
+    }
     // ── Todas: ajustar layout ────────────────────────────────────────────
 	function removeElements() {
 		document.querySelectorAll(IDs_TO_REMOVE).forEach(el => el.remove());
 		document.querySelectorAll(CLS_TO_REMOVE).forEach(el => el.remove());
 		document.querySelectorAll(IDs_TO_REMOVE_USER).forEach(el => el.remove());
 		document.querySelectorAll(CLS_TO_REMOVE_USER).forEach(el => el.remove());
+        if (hasCart()){
+            const firstCart = document.querySelectorAll(".carrinho-da-loja")[0];
+            if (firstCart){
+                if (!getCarrinhoControls()) {
+                    const controls = document.createElement("div");
+                    controls.id = "amyp-carrinho-controls";
+                    controls.className = "amyp-carrinho-controls";
+                    firstCart.parentElement.insertBefore(controls, firstCart);
+                }
+            }
+        }
 	}
 
 	function adjustElements() {
@@ -347,14 +362,10 @@
 			.myp-carrinho-header:hover {
 				background: rgba(0, 0, 0, 0.04);
 			}
-			.myp-carrinho-title {
+			.myp-carrinho-meta {
 				font-weight: 600;
 				font-size: 0.95em;
-			}
-			.myp-carrinho-meta {
-				font-size: 0.82em;
 				color: #888;
-				margin-left: 8px;
 			}
 			.myp-carrinho-body {
 				overflow: hidden;
@@ -377,9 +388,10 @@
 				transform: rotate(-90deg);
 			}
 			.amyp-carrinho-controls {
-				margin-bottom: 10px;
-				display: flex;
-				gap: 8px;
+                display: grid;
+                gap: 8px;
+                flex-wrap: wrap;
+                background: #fbfcfc;
 			}
 			.amyp-carrinho-controls button {
 				padding: 2px 10px;
@@ -395,9 +407,28 @@
                 font-style: normal;
                 font-size: 16px;
                 letter-spacing: .5px;
+                gap: 4px;
+                width: 24.5%
 			}
 			.amyp-carrinho-controls button:hover {
 				background: #e8e8e8;
+			}
+            .amyp-colecao-loading {
+                display: inline-block;
+                font-size: 0.75em;
+                color: #aaa;
+                margin-top: 4px;
+                margin-left: 8px;
+            }
+            .amyp-carrinho-tasks {
+                display: flex;
+                gap: 4px;
+				flex-wrap: wrap;
+				align-items: center;
+				padding: 8px;
+				background: #f9f9f9;
+				border-radius: 4px;
+				border: 1px solid #e0e0e0;
 			}
 		`;
 		document.head.appendChild(style);
@@ -412,13 +443,12 @@
 		if (!grupos.length) return;
 
 		// Barra de controles globais (expandir/recolher tudo)
-		const primeiroGrupo = grupos[0];
-		if (!document.getElementById("amyp-carrinho-controls")) {
-			const controls = document.createElement("div");
-			controls.id = "amyp-carrinho-controls";
-			controls.className = "amyp-carrinho-controls";
-
-			const btnExpandAll = document.createElement("button");
+        const controls = document.getElementById("amyp-carrinho-controls");
+		if (controls) {
+			const tasksDIv = document.createElement("div");
+            tasksDIv.id = "amyp-carrinho-tasks";
+            tasksDIv.classList.add("amyp-carrinho-tasks");
+            const btnExpandAll = document.createElement("button");
 			btnExpandAll.textContent = "▼ Expandir todos";
 			btnExpandAll.onclick = () => {
 				document.querySelectorAll(".myp-carrinho-body").forEach(body => {
@@ -440,17 +470,15 @@
 				});
 			};
 
-			controls.appendChild(btnExpandAll);
-			controls.appendChild(btnCollapseAll);
-			primeiroGrupo.parentElement.parentElement.insertBefore(controls, primeiroGrupo.parentElement);
+			tasksDIv.appendChild(btnExpandAll);
+			tasksDIv.appendChild(btnCollapseAll);
+			controls.append(tasksDIv);
 		}
 
 		grupos.forEach((grupo, index) => {
 			// Evita processar o mesmo elemento duas vezes
 			if (grupo.dataset.mypCollapsible) return;
 			grupo.dataset.mypCollapsible = "1";
-
-		    let titulo = `Grupo ${index + 1}`;
 
 			// Soma as quantidades dos inputs e os totais por item
 			function calcGrupoMeta(container) {
@@ -485,10 +513,6 @@
 			const header = document.createElement("div");
 			header.className = "myp-carrinho-header";
 
-			const tituloSpan = document.createElement("span");
-			tituloSpan.className = "myp-carrinho-title";
-			tituloSpan.textContent = titulo;
-
 			const metaSpan = document.createElement("span");
 			metaSpan.className = "myp-carrinho-meta";
 			metaSpan.textContent = calcGrupoMeta(grupo);
@@ -497,7 +521,6 @@
 			toggleArrow.className = "amyp-carrinho-toggle";
 			toggleArrow.textContent = "▼";
 
-			header.appendChild(tituloSpan);
 			header.appendChild(metaSpan);
 			header.appendChild(toggleArrow);
 
@@ -548,6 +571,186 @@
 		});
 	}
 
+	// ── Carrinho: navegação entre carrinhos ────────────────────────────────────────────
+	function injectCarrinhoNavStyles() {
+		if (document.getElementById("amyp-carrinho-nav-styles")) return;
+
+		const style = document.createElement("style");
+		style.id = "amyp-carrinho-nav-styles";
+		style.textContent = `
+			.amyp-carrinho-index {
+				display: flex;
+				gap: 4px;
+				margin-bottom: 12px;
+				flex-wrap: wrap;
+				align-items: center;
+				padding: 8px;
+				background: #f9f9f9;
+				border-radius: 4px;
+				border: 1px solid #e0e0e0;
+			}
+			.amyp-carrinho-index-label {
+				font-weight: 600;
+				font-size: 0.9em;
+				color: #555;
+				margin-right: 8px;
+			}
+			.amyp-carrinho-index a {
+				padding: 4px 8px;
+				border-radius: 4px;
+				border: 1px solid #ccc;
+				background: #f5f5f5;
+				color: #00949d;
+				text-decoration: none;
+				font-size: 0.85em;
+				font-weight: 500;
+				cursor: pointer;
+				transition: all 0.2s;
+			}
+			.amyp-carrinho-index a:hover {
+				background: #e8e8e8;
+				border-color: #00949d;
+			}
+			.amyp-carrinho-index a.active {
+				background: #00949d;
+				color: white;
+				border-color: #00949d;
+			}
+			.amyp-carrinho-nav-group {
+				display: flex;
+                margin: 2px;
+				gap: 8px;
+				justify-content: center;
+			}
+			.amyp-carrinho-nav-group a {
+				padding: 6px 12px;
+				border-radius: 4px;
+				border: 1px solid #00949d;
+				background: white;
+				color: #00949d;
+				text-decoration: none;
+				font-size: 0.9em;
+				font-weight: 500;
+				cursor: pointer;
+				transition: all 0.2s;
+			}
+			.amyp-carrinho-nav-group a:hover:not(.disabled) {
+				background: #f0fafb;
+			}
+			.amyp-carrinho-nav-group a.disabled {
+				opacity: 0.5;
+				cursor: not-allowed;
+				pointer-events: none;
+			}
+		`;
+		document.head.appendChild(style);
+	}
+
+	function addCarrinhoNavigation() {
+		if (action !== Actions.CART) return;
+
+		injectCarrinhoNavStyles();
+
+		const grupos = document.querySelectorAll(".carrinho-itens");
+		if (grupos.length === 0) return;
+
+		// Cria índice de carrinhos (barra de navegação no topo)
+		const primeiroGrupo = grupos[0];
+		const container = document.getElementById("amyp-carrinho-controls");
+
+		if (container && !document.getElementById("amyp-carrinho-index")) {
+			const indexNav = document.createElement("div");
+			indexNav.id = "amyp-carrinho-index";
+			indexNav.className = "amyp-carrinho-index";
+
+			const label = document.createElement("span");
+			label.className = "amyp-carrinho-index-label";
+			label.textContent = "Carrinhos:";
+			indexNav.appendChild(label);
+
+			grupos.forEach((grupo, idx) => {
+				let titulo = `Carrinho ${idx + 1}`;
+                const carrinho = grupo.closest(".carrinho-da-loja");
+                const vendedor = carrinho.querySelector(".carrinho-vendedor-nome");
+                if (vendedor) {
+                    titulo = vendedor.textContent.trim();
+                }
+                const link = document.createElement("a");
+				link.textContent = titulo;
+				link.dataset.carrinhoIdx = idx;
+				link.onclick = (e) => {
+					e.preventDefault();
+					scrollToCarrinho(idx);
+					updateIndexActive(idx);
+				};
+				if (idx === 0) link.classList.add("active");
+				indexNav.appendChild(link);
+			});
+
+			container.appendChild(indexNav);
+		}
+
+		// Adiciona navegação Anterior/Próximo em cada carrinho
+		grupos.forEach((grupo, idx) => {
+			if (grupo.dataset.mypNavAdded) return;
+			grupo.dataset.mypNavAdded = "1";
+
+			const navGroup = document.createElement("div");
+			navGroup.className = "amyp-carrinho-nav-group";
+
+			// Botão Anterior
+			const btnAnterior = document.createElement("a");
+			btnAnterior.textContent = "← Carrinho Anterior";
+			btnAnterior.onclick = (e) => {
+				e.preventDefault();
+				if (idx > 0) {
+					scrollToCarrinho(idx - 1);
+					updateIndexActive(idx - 1);
+				}
+			};
+			if (idx === 0) {
+				btnAnterior.classList.add("disabled");
+			}
+
+			// Botão Próximo
+			const btnProximo = document.createElement("a");
+			btnProximo.textContent = "Próximo Carrinho →";
+            if (idx === grupos.length - 1) {
+                btnProximo.textContent = "Primeiro Carrinho ⇈";
+            }
+			btnProximo.onclick = (e) => {
+				e.preventDefault();
+				if (idx < grupos.length - 1) {
+					scrollToCarrinho(idx + 1);
+					updateIndexActive(idx + 1);
+				} else{
+                    scrollToCarrinho(0);
+					updateIndexActive(0);
+                }
+			};
+
+			navGroup.appendChild(btnAnterior);
+			navGroup.appendChild(btnProximo);
+
+			// Insere ao comeco do carrinho do grupo
+            const carrinho = grupo.closest(".carrinho-da-loja");
+            carrinho.insertBefore(navGroup, carrinho.querySelector(".box-titulo-com-botao"));
+		});
+
+		function scrollToCarrinho(idx) {
+			const grupo = grupos[idx];
+			if (grupo) {
+				grupo.parentElement.scrollIntoView({ behavior: "smooth", block: "start" });
+			}
+		}
+
+		function updateIndexActive(idx) {
+			document.querySelectorAll(".amyp-carrinho-index a[data-carrinho-idx]").forEach((link, i) => {
+				link.classList.toggle("active", i === idx);
+			});
+		}
+	}
+
 	// ── Carrinho: avaliar existencia na colecao────────────────────────────────
     function injectColecaoStyles() {
         if (document.getElementById("amyp-colecao-styles")) return;
@@ -555,10 +758,6 @@
         const style = document.createElement("style");
         style.id = "amyp-colecao-styles";
         style.textContent = `
-        .amyp-collection-controls {
-            display: flex;
-			gap: 8px;
-        }
         .amyp-colecao-loading {
             display: inline-block;
             font-size: 0.75em;
@@ -573,19 +772,13 @@
     function addColecaoButton() {
         let controlsEl;
         if (hasCart()) {
-            controlsEl = document.getElementById("amyp-carrinho-controls")
+            controlsEl = getCarrinhoControls().querySelector(".amyp-carrinho-tasks");
         } else if (action === Actions.WISH) {
             controlsEl = document.querySelector("ul.pagination li.first");
         }
         if (!controlsEl) return;
         injectColecaoStyles();
         injectDuplicateStyles();
-        let controls = document.getElementById("amyp-collection-controls");
-        if (!controls) {
-            controls = document.createElement("div");
-            controls.id = "amyp-collection-controls";
-            controls.className = "amyp-collection-controls";
-        }
 
         const btn = document.createElement("button");
         btn.id = "myp-btn-colecao";
@@ -607,20 +800,23 @@
 			let time = 100;
             let done = 0;
             const keys = itens.map(el => getColecaoItemKey(el));
+            let idx = 0;
             for (const item of itens) {
                 const t = randomInt(250, 750);
-                btn.textContent = `🔍 Verificando... (${done}/${total})`;
+                btn.textContent = `🔍 ... (${done}/${total})`;
                 if (keys.filter(n => n === getColecaoItemKey(item)).length > 1){
-                    markDuplicateItem(item);
+                    markDuplicateItem(item, idx);
                 }
                 const r = await checkColecaoItem(item);
-                await wait(10);
                 if (r.failed) {
                     time += t;
                 	console.log( `🔍 Aguardando... ${time}ms`);
                     await wait(time);
                     time -= Math.floor(t / randomInt(1, 3));
+                } else {
+                    await wait(randomInt(0, 10));
                 }
+                idx++;
                 done++;
             }
 
@@ -637,9 +833,8 @@
             setTimeout(() => { btnLimpar.textContent = "🗑 Limpar cache"; }, 2000);
         };
 
-        controls.appendChild(btn);
-        controls.appendChild(btnLimpar);
-        controlsEl.appendChild(controls);
+        controlsEl.appendChild(btn);
+        controlsEl.appendChild(btnLimpar);
     }
 
     const COLECAO_KEY = "myp-colecao-checked";
@@ -704,7 +899,7 @@
             try {
                 let time = 100;
                 for (let mainTries = 1; mainTries <= 3; mainTries++){
-                    const mainT = randomInt(500, 1250);
+                    const mainT = randomInt(500, 1250) * mainTries;
                     try {
                         const doc = await getDoc(anchor.href);
                         naColecao.qtde = getQuantidadeItem(doc);
@@ -712,20 +907,20 @@
                         if (outros.length > 0) {
                             await wait(time);
                             naColecao.multiplas = true;
-                            const outroT = randomInt(100, 1000);
                             for (const i of outros){
                                 for (let internalTries = 0; internalTries <= 3;internalTries++){
-                                     try {
-                                         const subDoc = await getDoc(i.parentElement.href);
-                                         naColecao.qtde += getQuantidadeItem(subDoc);
-                                         break;
-                                     } catch (err) {
-                                         if (internalTries == 3) {
-                                             throw(err);
-                                         }
-                                         time += outroT;
-                                         await wait(time);
-                                     }
+                                    const outroT = randomInt(500, 1000) * internalTries;
+                                    try {
+                                        const subDoc = await getDoc(i.parentElement.href);
+                                        naColecao.qtde += getQuantidadeItem(subDoc);
+                                        break;
+                                    } catch (err) {
+                                        if (internalTries == 3) {
+                                            throw(err);
+                                        }
+                                        time += outroT;
+                                        await wait(time);
+                                    }
                                     time -= Math.floor(outroT / randomInt(1, 3));
                                 }
                             }
@@ -787,7 +982,32 @@
         document.head.appendChild(style);
     }
 
-    function markDuplicateItem(itemEl) {
+    function scrollToNextDuplicateFrom(itemEl) {
+        let el = itemEl;
+        if (el.tagName.toLowerCase() === "i"){
+            el = el.closest(".amyp-duplicated-link");
+        }
+        console.log("el");
+        console.log(el);
+        const linksEl = [...document.querySelectorAll(".amyp-duplicated-link")];
+        if (!linksEl) { return; }
+        const links = linksEl.filter(l => l.dataset.name === el.dataset.name);
+        console.log("links");
+        console.log(links);
+        if (links.length > 0) {
+            const after = links.filter(l => parseInt(l.dataset.idx) > parseInt(el.dataset.idx));
+            console.log("after");
+            console.log(after);
+
+            if (after.length > 0) {
+                after[0].closest(".carrinho-item-card").scrollIntoView({ behavior: "smooth", block: "start" });
+            } else {
+                links[0].closest(".carrinho-item-card").scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+        }
+    }
+
+    function markDuplicateItem(itemEl, idx) {
         const nameEl = itemEl.querySelector(".carrinho-item-name");
         if (!nameEl) return;
 
@@ -799,7 +1019,17 @@
 
         const badge = document.createElement("span");
         badge.className = "amyp-badge amyp-duplicate-badge";
-        badge.innerHTML = `<i class="fas fa-shopping-cart"></i>`;
+
+        const link = document.createElement("a");
+        link.classList.add("amyp-duplicated-link");
+        link.dataset.idx = idx;
+        link.dataset.name = nameP.textContent;
+        link.onclick = (e) => {
+            e.preventDefault();
+            scrollToNextDuplicateFrom(e.target);
+        };
+        link.innerHTML = `<i class="fas fa-shopping-cart"></i>`;
+        badge.appendChild(link);
         badge.title = "Múltiplas compras";
 
         nameP.appendChild(badge);
@@ -819,8 +1049,9 @@
 		setFirstEdition();
 		setOnSale();
         sortCarrinhoItens();
-		collapseCarrinhoItens();
+        collapseCarrinhoItens();
         addColecaoButton();
+        addCarrinhoNavigation();
 	}
 
 	if (document.readyState === "loading") {
