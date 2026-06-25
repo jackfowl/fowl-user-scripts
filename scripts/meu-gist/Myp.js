@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.8.0
-// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos. Navegar entre itens repetidos.
+// @version      1.8.1
+// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos.
 // @author       JackFowl
 // @match        *://mypcards.com
 // @match        *://mypcards.com/*
@@ -978,6 +978,9 @@
             background: #fdeae8;
             border: 1px solid #f5a39f;
         }
+        .amyp-duplicate-badge a {
+            color: #d9534f;
+        }
     `;
         document.head.appendChild(style);
     }
@@ -987,23 +990,19 @@
         if (el.tagName.toLowerCase() === "i"){
             el = el.closest(".amyp-duplicated-link");
         }
-        console.log("el");
-        console.log(el);
         const linksEl = [...document.querySelectorAll(".amyp-duplicated-link")];
         if (!linksEl) { return; }
         const links = linksEl.filter(l => l.dataset.name === el.dataset.name);
-        console.log("links");
-        console.log(links);
         if (links.length > 0) {
             const after = links.filter(l => parseInt(l.dataset.idx) > parseInt(el.dataset.idx));
-            console.log("after");
-            console.log(after);
-
+            let elToScroll = links[0].closest(".carrinho-item-card");
             if (after.length > 0) {
-                after[0].closest(".carrinho-item-card").scrollIntoView({ behavior: "smooth", block: "start" });
-            } else {
-                links[0].closest(".carrinho-item-card").scrollIntoView({ behavior: "smooth", block: "start" });
+                elToScroll = after[0].closest(".carrinho-item-card");
             }
+            elToScroll.scrollIntoView({ behavior: "smooth", block: "center" });
+            const color = elToScroll.style.color;
+            elToScroll.style.color = "#d9534f";
+            setTimeout(() => { elToScroll.style.color = color; }, 1000);
         }
     }
 
