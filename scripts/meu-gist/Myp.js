@@ -115,6 +115,12 @@
 		document.querySelectorAll(CLS_TO_REMOVE).forEach(el => el.remove());
 		document.querySelectorAll(IDs_TO_REMOVE_USER).forEach(el => el.remove());
 		document.querySelectorAll(CLS_TO_REMOVE_USER).forEach(el => el.remove());
+	}
+
+	function adjustElements() {
+		const header = document.getElementById("header");
+		if (header) header.style.position = "relative";
+        injectAwesomeStyles();
         if (hasCart()){
             const firstCart = document.querySelectorAll(".carrinho-da-loja")[0];
             if (firstCart){
@@ -126,12 +132,40 @@
                 }
             }
         }
-	}
+        if (action == Actions.CART){
+            const el = document.getElementById("enderecos");
+            if (el){
+                const divEl = el.parentElement.closest("div");
+                const body = document.createElement("div");
+                body.className = "amyp-collapsible-body collapsed";
+                while (divEl.firstChild) {
+                    body.appendChild(divEl.firstChild);
+                }
 
-	function adjustElements() {
-		const header = document.getElementById("header");
-		if (header) header.style.position = "relative";
-        injectAwesomeStyles();
+                const header = document.createElement("div");
+                header.className = "amyp-collapsible-header";
+                const metaSpan = document.createElement("span");
+                metaSpan.className = "amyp-collapsible-meta";
+                metaSpan.textContent = "Endereço";
+                const toggleArrow = document.createElement("span");
+                toggleArrow.className = "amyp-collapsible-toggle collapsed";
+                toggleArrow.textContent = "▼";
+                header.appendChild(metaSpan);
+                header.appendChild(toggleArrow);
+                divEl.appendChild(header);
+                divEl.appendChild(body);
+                header.addEventListener("click", () => {
+				const isCollapsed = body.classList.contains("collapsed");
+				if (isCollapsed) {
+					body.classList.remove("collapsed");
+					toggleArrow.classList.remove("collapsed");
+				} else {
+					body.classList.add("collapsed");
+					toggleArrow.classList.add("collapsed");
+				}
+			});
+            }
+        }
 	}
 
 	function setFocus() {
@@ -348,7 +382,11 @@
 		    .carrinho-da-loja { padding: 4px !important; }
 		    .carrinho-item-container-fix { gap: 4px !important; }
 		    .carrinho-item-card { gap: 4px !important; }
-			.myp-carrinho-header {
+            #carrinho-index .carrinho-main .carrinho-otimizador-cta {
+                padding: 4px !important;
+                margin-bottom: 4px !important;
+            }
+			.amyp-collapsible-header {
 				display: flex;
 				align-items: center;
 				justify-content: space-between;
@@ -357,41 +395,43 @@
 				padding: 6px 4px;
 				border-radius: 4px;
 				transition: background 0.15s;
+                background: rgba(0, 0, 0, 0.04);
+			}
+			.amyp-collapsible-header:hover {
+				border: 1px solid;
                 border-color: #00949d;
 			}
-			.myp-carrinho-header:hover {
-				background: rgba(0, 0, 0, 0.04);
-			}
-			.myp-carrinho-meta {
+			.amyp-collapsible-meta {
 				font-weight: 600;
 				font-size: 0.95em;
 				color: #888;
 			}
-			.myp-carrinho-body {
-				overflow: hidden;
-				transition: max-height 0.25s ease, opacity 0.2s ease;
-				opacity: 1;
-			}
-			.myp-carrinho-body.collapsed {
-				max-height: 0 !important;
-				opacity: 0;
-			}
-            .amyp-carrinho-toggle {
+            .amyp-collapsible-toggle {
 				font-size: 0.8em;
 				color: #aaa;
 				margin-left: auto;
 				padding-left: 12px;
-				transition: transform 0.2s;
+				transition: transform 0.2s ease;
 				display: inline-block;
 			}
-			.amyp-carrinho-toggle.collapsed {
+			.amyp-collapsible-body {
+				overflow: hidden;
+				transition: max-height 0.005s ease, opacity 0.2s ease;
+				opacity: 1;
+			}
+			.amyp-collapsible-body.collapsed {
+				max-height: 0 !important;
+				opacity: 0;
+			}
+			.amyp-collapsible-toggle.collapsed {
+                transform-origin: center bottom;
 				transform: rotate(-90deg);
 			}
 			.amyp-carrinho-controls {
                 display: grid;
                 gap: 8px;
-                flex-wrap: wrap;
                 background: #fbfcfc;
+                margin-bottom: 4px !important;
 			}
 			.amyp-carrinho-controls button {
 				padding: 2px 10px;
@@ -413,13 +453,6 @@
 			.amyp-carrinho-controls button:hover {
 				background: #e8e8e8;
 			}
-            .amyp-colecao-loading {
-                display: inline-block;
-                font-size: 0.75em;
-                color: #aaa;
-                margin-top: 4px;
-                margin-left: 8px;
-            }
             .amyp-carrinho-tasks {
                 display: flex;
                 gap: 4px;
@@ -430,6 +463,13 @@
 				border-radius: 4px;
 				border: 1px solid #e0e0e0;
 			}
+            .amyp-colecao-loading {
+                display: inline-block;
+                font-size: 0.75em;
+                color: #aaa;
+                margin-top: 4px;
+                margin-left: 8px;
+            }
 		`;
 		document.head.appendChild(style);
 	}
@@ -443,7 +483,7 @@
 		if (!grupos.length) return;
 
 		// Barra de controles globais (expandir/recolher tudo)
-        const controls = document.getElementById("amyp-carrinho-controls");
+        const controls = getCarrinhoControls();
 		if (controls) {
 			const tasksDIv = document.createElement("div");
             tasksDIv.id = "amyp-carrinho-tasks";
@@ -451,10 +491,10 @@
             const btnExpandAll = document.createElement("button");
 			btnExpandAll.textContent = "▼ Expandir todos";
 			btnExpandAll.onclick = () => {
-				document.querySelectorAll(".myp-carrinho-body").forEach(body => {
+				document.querySelectorAll(".amyp-collapsible-body").forEach(body => {
 					body.classList.remove("collapsed");
 				});
-				document.querySelectorAll(".amyp-carrinho-toggle").forEach(arrow => {
+				document.querySelectorAll(".amyp-collapsible-toggle").forEach(arrow => {
 					arrow.classList.remove("collapsed");
 				});
 			};
@@ -462,10 +502,10 @@
 			const btnCollapseAll = document.createElement("button");
 			btnCollapseAll.textContent = "▶ Recolher todos";
 			btnCollapseAll.onclick = () => {
-				document.querySelectorAll(".myp-carrinho-body").forEach(body => {
+				document.querySelectorAll(".amyp-collapsible-body").forEach(body => {
 					body.classList.add("collapsed");
 				});
-				document.querySelectorAll(".amyp-carrinho-toggle").forEach(arrow => {
+				document.querySelectorAll(".amyp-collapsible-toggle").forEach(arrow => {
 					arrow.classList.add("collapsed");
 				});
 			};
@@ -511,14 +551,14 @@
 
 			// Cria o cabeçalho colapsável
 			const header = document.createElement("div");
-			header.className = "myp-carrinho-header";
+			header.className = "amyp-collapsible-header";
 
 			const metaSpan = document.createElement("span");
-			metaSpan.className = "myp-carrinho-meta";
+			metaSpan.className = "amyp-collapsible-meta";
 			metaSpan.textContent = calcGrupoMeta(grupo);
 
 			const toggleArrow = document.createElement("span");
-			toggleArrow.className = "amyp-carrinho-toggle";
+			toggleArrow.className = "amyp-collapsible-toggle";
 			toggleArrow.textContent = "▼";
 
 			header.appendChild(metaSpan);
@@ -526,7 +566,7 @@
 
 			// Envolve o conteúdo original numa div colapsável
 			const body = document.createElement("div");
-			body.className = "myp-carrinho-body";
+			body.className = "amyp-collapsible-body";
 
 			// Move todos os filhos do grupo para o body
 			while (grupo.firstChild) {
@@ -579,7 +619,7 @@
 		style.id = "amyp-carrinho-nav-styles";
 		style.textContent = `
 			.amyp-carrinho-index {
-				display: flex;
+				display: grid;
 				gap: 4px;
 				margin-bottom: 12px;
 				flex-wrap: wrap;
@@ -656,7 +696,7 @@
 
 		// Cria índice de carrinhos (barra de navegação no topo)
 		const primeiroGrupo = grupos[0];
-		const container = document.getElementById("amyp-carrinho-controls");
+		const container = document.querySelector(".sticky-card");
 
 		if (container && !document.getElementById("amyp-carrinho-index")) {
 			const indexNav = document.createElement("div");
@@ -772,7 +812,10 @@
     function addColecaoButton() {
         let controlsEl;
         if (hasCart()) {
-            controlsEl = getCarrinhoControls().querySelector(".amyp-carrinho-tasks");
+            const container = getCarrinhoControls();
+			if (container) {
+				controlsEl = container.querySelector(".amyp-carrinho-tasks");
+			}
         } else if (action === Actions.WISH) {
             controlsEl = document.querySelector("ul.pagination li.first");
         }
