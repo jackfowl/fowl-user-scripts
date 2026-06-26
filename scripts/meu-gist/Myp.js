@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.8.1
+// @version      1.8.2
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -875,8 +875,9 @@
                 const currentKey = getColecaoItemKey(item);
                 const t = randomInt(500, 750);
                 btn.textContent = `🔍 ... (${done}/${total})`;
-                if (keys.filter(n => n === currentKey).length > 1){
-                    markDuplicateItem(item, idx);
+                const duplicates = keys.filter(n => n === currentKey).length;
+                if (duplicates > 1){
+                    markDuplicateItem(item, idx, duplicates);
                 }
                 if(cardsAndamento.includes(currentKey)){
                     markBoughtItem(item);
@@ -1070,6 +1071,7 @@
         }
         .amyp-duplicate-badge a {
             color: #d9534f;
+            text-decoration: none;
         }
     `;
         document.head.appendChild(style);
@@ -1096,7 +1098,7 @@
         }
     }
 
-    function markDuplicateItem(itemEl, idx) {
+    function markDuplicateItem(itemEl, idx, qty) {
         const nameEl = itemEl.querySelector(".carrinho-item-name");
         if (!nameEl) return;
 
@@ -1117,7 +1119,7 @@
             e.preventDefault();
             scrollToNextDuplicateFrom(e.target);
         };
-        link.innerHTML = `<i class="fas fa-shopping-cart"></i>`;
+        link.innerHTML = `<i class="fas fa-shopping-cart"></i>&nbsp;${qty}`;
         badge.appendChild(link);
         badge.title = "Múltiplos itens";
 
