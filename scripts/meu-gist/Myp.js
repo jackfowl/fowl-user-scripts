@@ -834,6 +834,19 @@
         return cards;
     }
 
+    // ⭐ FUNÇÃO wait() QUE ACEITA ABORT
+    function smartWait(ms, signal) {
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(resolve, ms);
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    clearTimeout(timeout);
+                    reject(new DOMException('Aborted', 'AbortError'));
+                });
+            }
+        });
+    }
+
     function addColecaoButton() {
         let controlsEl;
         if (hasCart()) {
@@ -848,67 +861,123 @@
         injectColecaoStyles();
         injectDuplicateStyles();
 
+        let abortController = null;
         const btn = document.createElement("button");
         btn.id = "myp-btn-colecao";
         btn.textContent = "🔍 Verificar coleção";
-        btn.onclick = async () => {
-            btn.disabled = true;
-            let itens = [];
-            if (action === Actions.CART || action === Actions.ORDER) {
-                itens = Array.from(document.querySelectorAll(".carrinho-item-card"));
-            } else {
-                itens = Array.from(document.querySelectorAll("div.card-btns a.btn-small"));
-            }
-            const total = itens.length;
 
-            if (total === 0) {
-                btn.textContent = "Nada a Verificar";
+        btn.onclick = async () => {
+            // Se já está rodando, para
+            if (abortController) {
+                console.log("Asked to abort");
+                abortController.abort();
+                abortController = null;
                 return;
             }
-            let cardsAndamento = await getCardsAndamento();
-			let time = 100;
-            let done = 0;
-            const keys = itens.map(el => getColecaoItemKey(el));
-            let idx = 0;
-            let fails = 0;
-            for (const item of itens) {
-                const currentKey = getColecaoItemKey(item);
-                const t = randomInt(500, 750);
-                btn.textContent = `🔍 ... (${done}/${total})`;
-                const duplicates = keys.filter(n => n === currentKey).length;
-                if (duplicates > 1){
-                    markDuplicateItem(item, idx, duplicates);
-                }
-                if(cardsAndamento.includes(currentKey)){
-                    markBoughtItem(item);
-                }
-                const r = await checkColecaoItem(item);
-                if (r.failed) {
-                    time += t;
-                	console.log( `🔍 Aguardando... ${time}ms`);
-                    await wait(time);
-                    time -= Math.floor(t / randomInt(1, 3));
-                    fails++;
-                } else {
-                    await wait(randomInt(0, 5));
-                }
-                idx++;
-                done++;
-            }
 
-            btn.textContent = "✔ Coleção verificada";
-            let timeOut = 2000;
-            const currentColor = btn.style.color;
-            if (fails > 0){
-                timeOut = 3000;
-                btn.style.color = "red";
-                btn.textContent = "✗ Erro na verificação";
-            }
-            setTimeout(() => {
-                btn.textContent = "🔍 Verificar coleção";
+            abortController = new AbortController();
+            const currentColor = btn.style.color; // ⭐ CAPTURA AQUI DENTRO
+            btn.textContent = "⏹ Parar";
+
+            try {
+                let itens = [];
+                if (action === Actions.CART || action === Actions.ORDER) {
+                    itens = Array.from(document.querySelectorAll(".carrinho-item-card"));
+                } else {
+                    itens = Array.from(document.querySelectorAll("div.card-btns a.btn-small"));
+                }
+                const total = itens.length;
+                if (total === 0) {
+                    btn.textContent = "Carrinho Vazio";
+                    btn.disabled = false;
+                    abortController = null;
+                    return;
+                }
+
+                let cardsAndamento = await getCardsAndamento();
+                let time = 100;
+                let done = 0;
+                const keys = itens.map(el => getColecaoItemKey(el));
+                let idx = 0;
+                let fails = 0;
+
+                for (const item of itens) {
+                    // ⭐ VERIFICA SE FOI SOLICITADO PARAR
+                    if (!abortController || abortController.signal.aborted) {
+                        console.log("Parado pelo usuário");
+                        btn.textContent = "⚠️ Parado";
+                        btn.style.color = "orange";
+                        setTimeout(() => {
+                            btn.textContent = "🔍 Verificar coleção";
+                            btn.style.color = currentColor;
+                            btn.disabled = false;
+                        }, 1500);
+                        return;
+                    }
+
+                    const currentKey = getColecaoItemKey(item);
+                    const t = randomInt(500, 750);
+                    btn.textContent = `⏹ ... (${done}/${total})`;
+
+                    const duplicates = keys.filter(n => n === currentKey).length;
+                    if (duplicates > 1) {
+                        markDuplicateItem(item, idx, duplicates);
+                    }
+                    if (cardsAndamento.includes(currentKey)) {
+                        markBoughtItem(item);
+                    }
+
+                    const r = await checkColecaoItem(item);
+                    if (r.failed) {
+                        time += t;
+                        console.log(`🔍 Aguardando... ${time}ms`);
+                        // ⭐ PASSA O SIGNAL PARA CANCELAR O WAIT
+                        try {
+                            await smartWait(time, abortController.signal || null);
+                        } catch (e) {
+                            if (e.name === 'AbortError') {
+                                console.log("Wait cancelado");
+                                return; // Sai do loop imediatamente
+                            }
+                        }
+                        time -= Math.floor(t / randomInt(1, 3));
+                        fails++;
+                    } else {
+                        // ⭐ PASSA O SIGNAL AQUI TAMBÉM
+                        try {
+                            await smartWait(randomInt(0, 5), abortController.signal || null);
+                        } catch (e) {
+                            if (e.name === 'AbortError') {
+                                return; // Sai do loop imediatamente
+                            }
+                        }
+                    }
+                    idx++;
+                    done++;
+                }
+
+                // Completou com sucesso
+                btn.textContent = "✔ Coleção verificada";
+                let timeOut = 2000;
+                if (fails > 0) {
+                    timeOut = 3000;
+                    btn.style.color = "red";
+                    btn.textContent = "✗ Erro na verificação";
+                }
+                setTimeout(() => {
+                    btn.textContent = "🔍 Verificar coleção";
+                    btn.style.color = currentColor;
+                    btn.disabled = false;
+                }, timeOut);
+
+            } catch (error) {
+                console.error("Erro:", error);
+                btn.textContent = "✗ Erro";
                 btn.style.color = currentColor;
-            }, timeOut);
-            btn.disabled = false;
+                btn.disabled = false;
+            } finally {
+                abortController = null;
+            }
         };
 
         const btnLimpar = document.createElement("button");
@@ -964,7 +1033,7 @@
     }
 
     async function checkColecaoItem(itemEl) {
-        let naColecao = {qtde: 0, multiplas: false, failed: false};
+        let naColecao = {qtde: 0, wished: false, multiplas: false, failed: false};
         const anchor = itemEl.querySelector(".carrinho-item-name a");
         if (!anchor) return;
 
@@ -989,6 +1058,7 @@
                     try {
                         const doc = await getDoc(anchor.href);
                         naColecao.qtde = getQuantidadeItem(doc);
+                        naColecao.wished = Array.from(doc.querySelectorAll(".heart-remove")).length > 0;
                         const outros = doc.querySelectorAll("i.fas.fa-book-open.fa-1x");
                         if (outros.length > 0) {
                             await wait(time);
@@ -1030,6 +1100,7 @@
                 }
             } catch (err) {
                 naColecao.total = 0;
+                naColecao.wished = false;
                 naColecao.failed = true;
                 loading.textContent = "erro ao verificar";
                 console.warn("[AwesoMYP] checkColecaoItem falhou:", anchor.textContent);
@@ -1040,8 +1111,17 @@
         	loading.remove();
         }
 
+        if (naColecao.wished) {
+            const exists = nameP.querySelector(".amyp-wished-badge");
+            if (!exists){
+                const badge = document.createElement("span");
+                badge.className = "amyp-badge amyp-wished-badge";
+                badge.innerHTML = `<i class="fas fa-heart"></i>`;
+                nameP.appendChild(badge);
+            }
+        }
         if (naColecao.qtde > 0) {
-            var exists = nameP.querySelector(".amyp-colecao-badge");
+            const exists = nameP.querySelector(".amyp-colecao-badge");
             if (!exists){
                 const badge = document.createElement("span");
                 badge.className = "amyp-badge amyp-colecao-badge";
@@ -1059,6 +1139,11 @@
         const style = document.createElement("style");
         style.id = "amyp-duplicate-styles";
         style.textContent = `
+        .amyp-wished-badge {
+            color: #A31F55;
+            background: #FBCFE8;
+            border: 1px solid #A31F55;
+        }
         .amyp-bought-badge {
             color: #FFA500;
             background: #F0E68C;
