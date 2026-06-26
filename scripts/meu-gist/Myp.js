@@ -809,6 +809,31 @@
         document.head.appendChild(style);
     }
 
+    async function getCardsAndamento(){
+        const cards = [];
+        const span = document.querySelector("#user-nav-toggle .hidden-sm");
+        if (span) {
+            const doc = await getDoc(`${window.location.origin}/${span.textContent.trim()}/compras`);
+            if(doc) {
+                const pedidos = [...doc.querySelectorAll("tbody tr")]
+                const andamento = pedidos.filter(p => !(p.querySelector(".statuspedido").textContent.toLowerCase().startsWith("recebido") || false));
+                for (const a of andamento){
+                    for (let i = 1; i <= 3; i++) {
+                        try {
+                            const p = await getDoc(`${window.location.origin}/pedido/${a.dataset.key}`);
+                            const pc = Array.from(p.querySelectorAll(".carrinho-item-name a")).map(c => c.textContent.trim());
+                            cards.push(...pc);
+                            break;
+                        } catch {
+                            await wait(1000 * i);
+                        }
+                    }
+                }
+            }
+        }
+        return cards;
+    }
+
     function addColecaoButton() {
         let controlsEl;
         if (hasCart()) {
@@ -840,15 +865,21 @@
                 btn.textContent = "Nada a Verificar";
                 return;
             }
+            let cardsAndamento = await getCardsAndamento();
 			let time = 100;
             let done = 0;
             const keys = itens.map(el => getColecaoItemKey(el));
             let idx = 0;
+            let fails = 0;
             for (const item of itens) {
-                const t = randomInt(250, 750);
+                const currentKey = getColecaoItemKey(item);
+                const t = randomInt(500, 750);
                 btn.textContent = `🔍 ... (${done}/${total})`;
-                if (keys.filter(n => n === getColecaoItemKey(item)).length > 1){
+                if (keys.filter(n => n === currentKey).length > 1){
                     markDuplicateItem(item, idx);
+                }
+                if(cardsAndamento.includes(currentKey)){
+                    markBoughtItem(item);
                 }
                 const r = await checkColecaoItem(item);
                 if (r.failed) {
@@ -856,15 +887,26 @@
                 	console.log( `🔍 Aguardando... ${time}ms`);
                     await wait(time);
                     time -= Math.floor(t / randomInt(1, 3));
+                    fails++;
                 } else {
-                    await wait(randomInt(0, 10));
+                    await wait(randomInt(0, 5));
                 }
                 idx++;
                 done++;
             }
 
             btn.textContent = "✔ Coleção verificada";
-            setTimeout(() => { btn.textContent = "🔍 Verificar coleção"; }, 2000);
+            let timeOut = 2000;
+            const currentColor = btn.style.color;
+            if (fails > 0){
+                timeOut = 3000;
+                btn.style.color = "red";
+                btn.textContent = "✗ Erro na verificação";
+            }
+            setTimeout(() => {
+                btn.textContent = "🔍 Verificar coleção";
+                btn.style.color = currentColor;
+            }, timeOut);
             btn.disabled = false;
         };
 
@@ -1016,10 +1058,15 @@
         const style = document.createElement("style");
         style.id = "amyp-duplicate-styles";
         style.textContent = `
+        .amyp-bought-badge {
+            color: #FFA500;
+            background: #F0E68C;
+            border: 1px solid #FFA500;
+        }
         .amyp-duplicate-badge {
             color: #d9534f;
             background: #fdeae8;
-            border: 1px solid #f5a39f;
+            border: 1px solid #d9534f;
         }
         .amyp-duplicate-badge a {
             color: #d9534f;
@@ -1072,8 +1119,25 @@
         };
         link.innerHTML = `<i class="fas fa-shopping-cart"></i>`;
         badge.appendChild(link);
-        badge.title = "Múltiplas compras";
+        badge.title = "Múltiplos itens";
 
+        nameP.appendChild(badge);
+    }
+
+    function markBoughtItem(itemEl){
+        const nameEl = itemEl.querySelector(".carrinho-item-name");
+        if (!nameEl) return;
+
+        // Verifica se já foi marcado
+        if (nameEl.querySelector(".amyp-bought-badge")) return;
+
+        const nameP = nameEl.querySelector("p");
+        if (!nameP) return;
+
+        const badge = document.createElement("span");
+        badge.className = "amyp-badge amyp-bought-badge";
+        badge.innerHTML = `<i class="fas fa-truck"></i>`;
+        badge.title = "Compra em andamento";
         nameP.appendChild(badge);
     }
 
