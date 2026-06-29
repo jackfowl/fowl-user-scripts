@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.8.3
+// @version      1.8.2
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -12,7 +12,7 @@
 	const CardGame = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
 	const Actions = Object.freeze({ NONE: 0, CART: 1, ORDER: 2, WISH: 3, CREATE: 4, UPDATE: 5 });
 	const IDs_TO_REMOVE = "#dataenvioestoque-link, #btn-salvar-incluir, #main-menu-desktop, #main-menu-mobile, #header-spacer, #estoque-card-search";
-	const CLS_TO_REMOVE = ".myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
+	const CLS_TO_REMOVE = ".wishlist-quantidade, .myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
 	const IDs_TO_REMOVE_USER = "#titulo-cards, #usuario-pastas-marcas";
 	const CLS_TO_REMOVE_USER = ".usuario-titulo-com-estrelas";
 	const YGO_FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
@@ -26,6 +26,19 @@
     function wait(ms) {
 		return new Promise(resolve => setTimeout(resolve, ms));
 	}
+
+    // ⭐ FUNÇÃO wait() QUE ACEITA ABORT
+    function smartWait(ms, signal) {
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(resolve, ms);
+            if (signal) {
+                signal.addEventListener('abort', () => {
+                    clearTimeout(timeout);
+                    reject(new DOMException('Aborted', 'AbortError'));
+                });
+            }
+        });
+    }
 
     function injectAwesomeStyles() {
         if (document.getElementById("myp-card-styles")) return;
@@ -450,6 +463,9 @@
                 gap: 4px;
                 width: 24.5%
 			}
+            .amyp {
+                text-align: center;
+            }
 			.amyp-carrinho-controls button:hover {
 				background: #e8e8e8;
 			}
@@ -476,8 +492,6 @@
 
 	function collapseCarrinhoItens() {
 		if (!hasCart()) return;
-
-		injectCarrinhoStyles();
 
 		const grupos = document.querySelectorAll(".carrinho-itens");
 		if (!grupos.length) return;
@@ -834,38 +848,27 @@
         return cards;
     }
 
-    // ⭐ FUNÇÃO wait() QUE ACEITA ABORT
-    function smartWait(ms, signal) {
-        return new Promise((resolve, reject) => {
-            const timeout = setTimeout(resolve, ms);
-            if (signal) {
-                signal.addEventListener('abort', () => {
-                    clearTimeout(timeout);
-                    reject(new DOMException('Aborted', 'AbortError'));
-                });
-            }
-        });
-    }
-
     function addColecaoButton() {
         let controlsEl;
-        if (hasCart()) {
+        const taNoCarrinho = hasCart();
+        if (taNoCarrinho) {
             const container = getCarrinhoControls();
 			if (container) {
 				controlsEl = container.querySelector(".amyp-carrinho-tasks");
 			}
         } else if (action === Actions.WISH) {
-            controlsEl = document.querySelector("ul.pagination li.first");
+            controlsEl = document.querySelector("ul.pagination");
         }
         if (!controlsEl) return;
         injectColecaoStyles();
         injectDuplicateStyles();
 
         let abortController = null;
-        const btn = document.createElement("button");
+        const btn = document.createElement(hasCart() ? "button": "li");
         btn.id = "myp-btn-colecao";
-        btn.textContent = "🔍 Verificar coleção";
-
+        btn.className = "amyp";
+        btn.textContent = " 🔍 ";
+        btn.title = "Verificar coleção";
         btn.onclick = async () => {
             // Se já está rodando, para
             if (abortController) {
@@ -877,18 +880,19 @@
 
             abortController = new AbortController();
             const currentColor = btn.style.color; // ⭐ CAPTURA AQUI DENTRO
-            btn.textContent = "⏹ Parar";
+            btn.textContent = "⏹";
+            btn.title = "Parar";
 
             try {
                 let itens = [];
-                if (action === Actions.CART || action === Actions.ORDER) {
+                if (taNoCarrinho) {
                     itens = Array.from(document.querySelectorAll(".carrinho-item-card"));
                 } else {
-                    itens = Array.from(document.querySelectorAll("div.card-btns a.btn-small"));
+                    itens = Array.from(document.querySelectorAll("div.card"));
                 }
                 const total = itens.length;
                 if (total === 0) {
-                    btn.textContent = "Carrinho Vazio";
+                    btn.textContent = "Sem itens";
                     btn.disabled = false;
                     abortController = null;
                     return;
@@ -917,18 +921,19 @@
 
                     const currentKey = getColecaoItemKey(item);
                     const t = randomInt(500, 750);
-                    btn.textContent = `⏹ ... (${done}/${total})`;
-
-                    const duplicates = keys.filter(n => n === currentKey).length;
-                    if (duplicates > 1) {
-                        markDuplicateItem(item, idx, duplicates);
+                    btn.textContent = `⏹ (${Math.trunc(done/total*100)}%)`;
+                    if (taNoCarrinho){
+                        const duplicates = keys.filter(n => n === currentKey).length;
+                        if (duplicates > 1) {
+                            markDuplicateItem(item, idx, duplicates);
+                        }
                     }
                     if (cardsAndamento.includes(currentKey)) {
                         markBoughtItem(item);
                     }
 
                     const r = await checkColecaoItem(item);
-                    if (r.failed) {
+                    if (r && r.failed) {
                         time += t;
                         console.log(`🔍 Aguardando... ${time}ms`);
                         // ⭐ PASSA O SIGNAL PARA CANCELAR O WAIT
@@ -957,22 +962,22 @@
                 }
 
                 // Completou com sucesso
-                btn.textContent = "✔ Coleção verificada";
+                btn.textContent = "✔";
                 let timeOut = 2000;
                 if (fails > 0) {
                     timeOut = 3000;
                     btn.style.color = "red";
-                    btn.textContent = "✗ Erro na verificação";
+                    btn.textContent = "✗";
                 }
                 setTimeout(() => {
-                    btn.textContent = "🔍 Verificar coleção";
+                    btn.textContent = "🔍";
                     btn.style.color = currentColor;
                     btn.disabled = false;
                 }, timeOut);
 
             } catch (error) {
                 console.error("Erro:", error);
-                btn.textContent = "✗ Erro";
+                btn.textContent = "✗";
                 btn.style.color = currentColor;
                 btn.disabled = false;
             } finally {
@@ -980,8 +985,10 @@
             }
         };
 
-        const btnLimpar = document.createElement("button");
-        btnLimpar.textContent = "🗑 Limpar cache";
+        const btnLimpar = document.createElement(hasCart() ? "div": "li");
+        btnLimpar.textContent = " 🗑 ";
+        btnLimpar.title = "Limpar cache";
+        btnLimpar.className = "amyp";
         btnLimpar.onclick = () => {
             localStorage.removeItem(COLECAO_KEY);
             btnLimpar.textContent = "✔ Cache limpo";
@@ -1009,7 +1016,8 @@
     }
 
     function getColecaoItemKey(itemEl) {
-        const anchor = itemEl.querySelector(".carrinho-item-name a");
+        let anchor = itemEl.querySelector(".carrinho-item-name a");
+        if (!anchor) anchor = itemEl.querySelector(".card-name h3");
         if (!anchor) return null;
         return anchor.textContent.trim();
     }
@@ -1034,19 +1042,27 @@
 
     async function checkColecaoItem(itemEl) {
         let naColecao = {qtde: 0, wished: false, multiplas: false, failed: false};
-        const anchor = itemEl.querySelector(".carrinho-item-name a");
-        if (!anchor) return;
+        const taNoCarrinho = hasCart();
 
+        let anchor;
+        let elToBadge;
+        if (taNoCarrinho){
+            anchor = itemEl.querySelector(".carrinho-item-name a");
+            if (!anchor) return;
+            const nameEl = itemEl.querySelector(".carrinho-item-name");
+            elToBadge = nameEl.querySelector("p");
+        }else{
+            anchor = itemEl.querySelector(".card-btns a");
+            elToBadge = anchor;
+        }
+        if (!elToBadge) return;
         const key = getColecaoItemKey(itemEl);
-        const nameEl = itemEl.querySelector(".carrinho-item-name");
-        if (!nameEl) return;
-        const nameP = nameEl.querySelector("p");
         const cache = loadColecaoCache();
 
         const loading = document.createElement("span");
         loading.className = "amyp-colecao-loading";
-        loading.textContent = "verificando...";
-        nameP.appendChild(loading);
+        loading.innerHtml = `i class="fas fa-clock"></i>`;
+        elToBadge.appendChild(loading);
 
         if (key && key in cache && cache[key]) {
             naColecao = cache[key];
@@ -1111,22 +1127,22 @@
         	loading.remove();
         }
 
-        if (naColecao.wished) {
-            const exists = nameP.querySelector(".amyp-wished-badge");
+        if (taNoCarrinho && naColecao.wished) {
+            const exists = elToBadge.querySelector(".amyp-wished-badge");
             if (!exists){
                 const badge = document.createElement("span");
                 badge.className = "amyp-badge amyp-wished-badge";
                 badge.innerHTML = `<i class="fas fa-heart"></i>`;
-                nameP.appendChild(badge);
+                elToBadge.appendChild(badge);
             }
         }
         if (naColecao.qtde > 0) {
-            const exists = nameP.querySelector(".amyp-colecao-badge");
+            const exists = elToBadge.querySelector(".amyp-colecao-badge");
             if (!exists){
                 const badge = document.createElement("span");
                 badge.className = "amyp-badge amyp-colecao-badge";
                 badge.innerHTML = `<i class="fas fa-book-open"></i> ${naColecao.qtde}${naColecao.multiplas ? "*" : ""}`;
-                nameP.appendChild(badge);
+                elToBadge.appendChild(badge);
             }
         }
         return naColecao;
@@ -1232,6 +1248,7 @@
 
 	function repaginate() {
 		setCurrentFlow();
+        injectCarrinhoStyles();
 		removeElements();
 		adjustElements();
 		setFocus();
