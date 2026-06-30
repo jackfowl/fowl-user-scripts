@@ -13,7 +13,7 @@
 	const Actions = Object.freeze({ NONE: 0, CART: 1, ORDER: 2, WISH: 3, CREATE: 4, UPDATE: 5 });
 	const IDs_TO_REMOVE = "#dataenvioestoque-link, #btn-salvar-incluir, #main-menu-desktop, #main-menu-mobile, #header-spacer, #estoque-card-search";
 	const CLS_TO_REMOVE = ".wishlist-quantidade, .myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
-	const IDs_TO_REMOVE_USER = "#titulo-cards, #usuario-pastas-marcas";
+	const IDs_TO_REMOVE_USER = "#titulo-cards";
 	const CLS_TO_REMOVE_USER = ".usuario-titulo-com-estrelas";
 	const YGO_FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
 	const PKM_FOIL_MAIN_OPTIONS = ["1", "2", "3", "6"]; // Normal, Foil, Reverse Foil, Promo
@@ -49,6 +49,24 @@
   .estoque-create .content-box .form .grid .btn, .estoque-update .content-box .form .grid .btn {
     margin-top: 6px;
     min-width: unset;
+  }
+  .stream .stream-organizer {
+      padding: 5px 20px !important;
+      margin-bottom: 5px !important;
+  }
+  .stream-list {
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+  }
+  .stream-list .stream-item {
+    width: 200px;
+    margin-top: 0px;
+    margin-right: 5px;
+    margin-bottom: 15px;
+    margin-left: 5px;
+  }
+  .stream-item .card {
+    padding: 0px !important;
   }
   .form-group {
     margin-bottom: 6px !important;
@@ -985,7 +1003,7 @@
             }
         };
 
-        const btnLimpar = document.createElement(hasCart() ? "div": "li");
+        const btnLimpar = document.createElement(hasCart() ? "button": "li");
         btnLimpar.textContent = " 🗑 ";
         btnLimpar.title = "Limpar cache";
         btnLimpar.className = "amyp";
