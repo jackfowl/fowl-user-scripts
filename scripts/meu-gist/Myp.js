@@ -15,7 +15,8 @@
 	const CLS_TO_REMOVE = ".wishlist-quantidade, .myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
 	const IDs_TO_REMOVE_USER = "#titulo-cards";
 	const CLS_TO_REMOVE_USER = ".usuario-titulo-com-estrelas";
-	const YGO_FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
+	const SEARCH_MAIN_OPTIONS = ["todos", "yugioh", "outros", "pokemon"];
+    const YGO_FOIL_MAIN_OPTIONS = ["9", "11", "12", "13"]; // Comum, Rara, Super Rara, Ultra Rara
 	const PKM_FOIL_MAIN_OPTIONS = ["1", "2", "3", "6"]; // Normal, Foil, Reverse Foil, Promo
 	const LANGUAGE_MAIN_OPTIONS = ["1", "2"]; //Português, Inglês
 	let tcg=CardGame.NONE;
@@ -40,15 +41,43 @@
         });
     }
 
+    function injectAwesomeOptions() {
+        if (document.getElementById("amyp-options-container")) return;
+        const container = document.createElement("div");
+        container.id = "amyp-options-container";
+
+        const optAutoCompleteCodes = document.createElement("input")
+        optAutoCompleteCodes.setAttribute("type", "checkbox");
+        optAutoCompleteCodes.textContent = "AC Id";
+    }
+
     function injectAwesomeStyles() {
-        if (document.getElementById("myp-card-styles")) return;
+        if (document.getElementById("amyp-card-styles")) return;
 
 		const style = document.createElement("style");
-		style.id = "myp-card-styles";
+		style.id = "amyp-card-styles";
         style.textContent = `
   .estoque-create .content-box .form .grid .btn, .estoque-update .content-box .form .grid .btn {
     margin-top: 6px;
     min-width: unset;
+  }
+  #header nav .search #produtoSearchForm {
+    display: flex !important;
+  }
+  #header nav .search #produtoSearchForm .searchbar-input-wrapper {
+    display: flex !important;
+    flex: 1 !important;
+  }
+  #header nav .search #produtoSearchForm #btn-buscar {
+    padding-right: 5px;
+  }
+  #header nav .search #produtoSearchForm #search-marca-selector {
+    background-position: right 1em top 12px;
+    font-size: 14px;
+    min-width: 120px;
+  }
+  .stream .pagination {
+      margin-bottom: 5px !important;
   }
   .stream .stream-organizer {
       padding: 5px 20px !important;
@@ -57,6 +86,7 @@
   .stream-list {
     padding-top: 5px !important;
     padding-bottom: 5px !important;
+    justify-content: space-evenly !important;
   }
   .stream-list .stream-item {
     width: 200px;
@@ -151,7 +181,13 @@
 	function adjustElements() {
 		const header = document.getElementById("header");
 		if (header) header.style.position = "relative";
+        const searchBox = document.querySelector(".searchbar-input-wrapper");
+        if (searchBox){
+            const btn = document.getElementById("btn-buscar");
+            searchBox.append(btn);
+        }
         injectAwesomeStyles();
+        injectAwesomeOptions();
         if (hasCart()){
             const firstCart = document.querySelectorAll(".carrinho-da-loja")[0];
             if (firstCart){
@@ -246,19 +282,13 @@
 	}
 
     // ── Cadastro: ajustar layout e opções mais utilizadas ────────────────────────────────────────────
-	function reorderFoilSelect() {
-		if (action !== Actions.CREATE) return;
-		const select = document.getElementById("estoque-idfoil");
+	function keepUsedSearchTopics() {
+		const select = document.getElementById("search-marca-selector");
 		if (!select) return;
 
 		const allOptions = Array.from(select.options);
 		let available = Array.from(select.options).map(opt => opt.value);
-		if (tcg === CardGame.YGO) {
-			available = YGO_FOIL_MAIN_OPTIONS;
-        }
-		else if (tcg === CardGame.PKM) {
-			available = PKM_FOIL_MAIN_OPTIONS;
-        }
+		available = SEARCH_MAIN_OPTIONS;
 
 		const priorityOptions = available
 			.map(val => allOptions.find(opt => opt.value === val))
@@ -273,65 +303,29 @@
 		select._hiddenOptions = otherOptions;
 	}
 
-	function addFoilButton() {
-		if (action !== Actions.CREATE) return;
-		const label = document.querySelector(".field-estoque-idfoil label");
-		if (!label) return;
-
-		const button = document.createElement("button");
-		button.type = "button";
-		button.className = "btn btn-outline btn-icon btn-rounded btn-hint";
-		button.style.height = "1.2em";
-		button.style.alignContent = "center";
-		button.style.alignItems = "center";
-		button.style.display = "inline-flex";
-		button.style.justifyContent = "center";
-		button.style.margin = "0 0 0 4px";
-		button.style.padding = "0";
-
-		button.onclick = () => {
-			const select = document.getElementById("estoque-idfoil");
-			if (!select) return;
-
-			if (select._hiddenOptions && select._hiddenOptions.length > 0) {
-				select._hiddenOptions.forEach(opt => select.appendChild(opt));
-				select._hiddenOptions = [];
-				button.classList.add("active");
-			}
-		};
-
-		const icon = document.createElement("i");
-		icon.style.fontSize = ".75em";
-		icon.className = "fas fa-plus";
-
-		button.appendChild(icon);
-		label.appendChild(button);
-	}
-
-	function reorderLanguageSelect() {
-		if (action !== Actions.CREATE) return;
-		const select = document.getElementById("estoque-ididioma");
-		if (!select) return;
-
+    // ── Cadastro: ajustar layout e opções mais utilizadas ────────────────────────────────────────────
+	function leftUsedOptions(select, mostUsed, addShowOtherOptionsTo, position) {
+		if (!select || !mostUsed) return;
 		const allOptions = Array.from(select.options);
-
-		const priorityOptions = LANGUAGE_MAIN_OPTIONS
+		let available = mostUsed;
+        if (!available) available = Array.from(select.options).map(opt => opt.value);
+		const priorityOptions = available
 			.map(val => allOptions.find(opt => opt.value === val))
 			.filter(Boolean);
-
-		const otherOptions = allOptions.filter(opt => !LANGUAGE_MAIN_OPTIONS.includes(opt.value));
-
+		const otherOptions = allOptions.filter(opt => !available.includes(opt.value));
 		select.innerHTML = "";
-
 		priorityOptions.forEach(opt => select.appendChild(opt));
-
 		select._hiddenOptions = otherOptions;
+        if (addShowOtherOptionsTo) addRevealOptionsButton(select, addShowOtherOptionsTo, position);
 	}
 
-	function addLanguageButton() {
-		if (action !== Actions.CREATE) return;
-		const label = document.querySelector(".field-estoque-ididioma label");
-		if (!label) return;
+	function addRevealOptionsButton(refEl, whereToEl, positionToBe) {
+		if (!whereToEl) return;
+        let position = positionToBe;
+        if (!position) position = "afterend";
+        const icon = document.createElement("i");
+		icon.style.fontSize = ".75em";
+		icon.className = "fas fa-plus";
 
 		const button = document.createElement("button");
 		button.type = "button";
@@ -343,9 +337,9 @@
 		button.style.justifyContent = "center";
 		button.style.margin = "0 0 0 4px";
 		button.style.padding = "0";
-
+        button.style.alignSelf = "center";
 		button.onclick = () => {
-			const select = document.getElementById("estoque-ididioma");
+			const select = refEl;
 			if (!select) return;
 
 			if (select._hiddenOptions && select._hiddenOptions.length > 0) {
@@ -353,14 +347,10 @@
 				select._hiddenOptions = [];
 				button.classList.add("active");
 			}
+            button.remove();
 		};
-
-		const icon = document.createElement("i");
-		icon.style.fontSize = ".75em";
-		icon.className = "fas fa-plus";
-
 		button.appendChild(icon);
-		label.appendChild(button);
+		whereToEl.insertAdjacentElement(position, button);
 	}
 
 	function isEstoque(){
@@ -1269,17 +1259,25 @@
         injectCarrinhoStyles();
 		removeElements();
 		adjustElements();
-		setFocus();
-		reorderFoilSelect();
-		addFoilButton();
-		reorderLanguageSelect();
-		addLanguageButton();
-		setFirstEdition();
+        let mostUsedRarityVersion;
+		if (action === Actions.CREATE) {
+            if (tcg === CardGame.YGO) {
+                mostUsedRarityVersion = YGO_FOIL_MAIN_OPTIONS;
+            }
+            else if (tcg === CardGame.PKM) {
+                mostUsedRarityVersion = PKM_FOIL_MAIN_OPTIONS;
+            }
+            leftUsedOptions(document.getElementById("estoque-idfoil"), mostUsedRarityVersion, document.querySelector(".field-estoque-idfoil label"), "beforeend");
+            leftUsedOptions(document.getElementById("estoque-ididioma"), LANGUAGE_MAIN_OPTIONS, document.querySelector(".field-estoque-ididioma label"), "beforeend");
+            setFirstEdition();
+        }
+        leftUsedOptions(document.getElementById("search-marca-selector"), SEARCH_MAIN_OPTIONS, document.getElementById("search-marca-selector"), "afterend");
 		setOnSale();
         sortCarrinhoItens();
         collapseCarrinhoItens();
         addColecaoButton();
         addCarrinhoNavigation();
+        setFocus();
 	}
 
 	if (document.readyState === "loading") {
