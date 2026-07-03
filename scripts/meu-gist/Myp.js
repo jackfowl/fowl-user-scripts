@@ -474,6 +474,9 @@
             .amyp {
                 text-align: center;
             }
+            li.amyp {
+                cursor: pointer !important;
+            }
 			.amyp-carrinho-controls button:hover {
 				background: #e8e8e8;
 			}
@@ -856,10 +859,18 @@
         return cards;
     }
 
+    async function getCarrinhoKeys(){
+        const cards = [];
+        const doc = await getDoc(`${window.location.origin}/carrinho`);
+        if(doc) {
+            cards = [...doc.querySelectorAll(".carrinho-item-name a")].map(c => c.textContent.trim());
+        }
+        return cards;
+    }
+
     function addColecaoButton() {
         let controlsEl;
-        const taNoCarrinho = hasCart();
-        if (taNoCarrinho) {
+        if (hasCart()) {
             const container = getCarrinhoControls();
 			if (container) {
 				controlsEl = container.querySelector(".amyp-carrinho-tasks");
@@ -893,7 +904,7 @@
 
             try {
                 let itens = [];
-                if (taNoCarrinho) {
+                if (hasCart()) {
                     itens = Array.from(document.querySelectorAll(".carrinho-item-card"));
                 } else {
                     itens = Array.from(document.querySelectorAll("div.card"));
@@ -907,6 +918,8 @@
                 }
 
                 let cardsAndamento = await getCardsAndamento();
+                let cardsCarrinho = [];
+                if (action != Actions.CART) cardsCarrinho = [...await getCarrinhoKeys()];
                 let time = 100;
                 let done = 0;
                 const keys = itens.map(el => getColecaoItemKey(el));
@@ -929,8 +942,11 @@
 
                     const currentKey = getColecaoItemKey(item);
                     const t = randomInt(500, 750);
-                    btn.textContent = `⏹ (${Math.trunc(done/total*100)}%)`;
-                    if (taNoCarrinho){
+                    btn.textContent = `${Math.trunc(done/total*100)}%`;
+                    if (action === Actions.WISH){
+                        if (cardsCarrinho.filter(c=> c == currentKey).lenght > 0) markBoughtItem(item);
+                    }
+                    if (hasCart()){
                         const duplicates = keys.filter(n => n === currentKey).length;
                         if (duplicates > 1) {
                             markDuplicateItem(item, idx, duplicates);
@@ -994,13 +1010,13 @@
         };
 
         const btnLimpar = document.createElement(hasCart() ? "button": "li");
-        btnLimpar.textContent = " 🗑 ";
+        btnLimpar.textContent = "🗑";
         btnLimpar.title = "Limpar cache";
         btnLimpar.className = "amyp";
         btnLimpar.onclick = () => {
             localStorage.removeItem(COLECAO_KEY);
-            btnLimpar.textContent = "✔ Cache limpo";
-            setTimeout(() => { btnLimpar.textContent = "🗑 Limpar cache"; }, 2000);
+            btnLimpar.textContent = "✔";
+            setTimeout(() => { btnLimpar.textContent = "🗑"; }, 1000);
         };
 
         controlsEl.appendChild(btn);
@@ -1048,29 +1064,36 @@
         return qtd;
     }
 
-    async function checkColecaoItem(itemEl) {
-        let naColecao = {qtde: 0, wished: false, multiplas: false, failed: false};
-        const taNoCarrinho = hasCart();
-
+    function getElementsToUse(itemEl){
         let anchor;
-        let elToBadge;
-        if (taNoCarrinho){
+        let toBadge;
+        console.log(action);
+        if (hasCart()){
             anchor = itemEl.querySelector(".carrinho-item-name a");
-            if (!anchor) return;
+            if (!anchor) return {err: "not found anchor"};
             const nameEl = itemEl.querySelector(".carrinho-item-name");
-            elToBadge = nameEl.querySelector("p");
+            toBadge = nameEl.querySelector("p");
         }else{
             anchor = itemEl.querySelector(".card-btns a");
-            elToBadge = anchor;
+            toBadge = anchor;
         }
-        if (!elToBadge) return;
+        console.log(anchor, toBadge);
+        return {anchor, toBadge};
+    }
+
+    async function checkColecaoItem(itemEl) {
+        let naColecao = {qtde: 0, wished: false, multiplas: false, failed: false};
+
+        const elToUse = getElementsToUse(itemEl);
+        if (!elToUse || !elToUse.toBadge) { console.log("checkColecaoItem no El");return;}
         const key = getColecaoItemKey(itemEl);
+        console.log(key);
         const cache = loadColecaoCache();
 
         const loading = document.createElement("span");
         loading.className = "amyp-colecao-loading";
         loading.innerHtml = `i class="fas fa-clock"></i>`;
-        elToBadge.appendChild(loading);
+        elToUse.toBadge.appendChild(loading);
 
         if (key && key in cache && cache[key]) {
             naColecao = cache[key];
@@ -1080,7 +1103,7 @@
                 for (let mainTries = 1; mainTries <= 3; mainTries++){
                     const mainT = randomInt(500, 1250) * mainTries;
                     try {
-                        const doc = await getDoc(anchor.href);
+                        const doc = await getDoc(elToUse.anchor.href);
                         naColecao.qtde = getQuantidadeItem(doc);
                         naColecao.wished = Array.from(doc.querySelectorAll(".heart-remove")).length > 0;
                         const outros = doc.querySelectorAll("i.fas.fa-book-open.fa-1x");
@@ -1127,7 +1150,7 @@
                 naColecao.wished = false;
                 naColecao.failed = true;
                 loading.textContent = "erro ao verificar";
-                console.warn("[AwesoMYP] checkColecaoItem falhou:", anchor.textContent);
+                console.warn("[AwesoMYP] checkColecaoItem falhou:", elToUse.anchor.textContent);
             }
         }
 
@@ -1135,22 +1158,22 @@
         	loading.remove();
         }
 
-        if (taNoCarrinho && naColecao.wished) {
-            const exists = elToBadge.querySelector(".amyp-wished-badge");
+        if (hasCart() && naColecao.wished) {
+            const exists = elToUse.toBadge.querySelector(".amyp-wished-badge");
             if (!exists){
                 const badge = document.createElement("span");
                 badge.className = "amyp-badge amyp-wished-badge";
                 badge.innerHTML = `<i class="fas fa-heart"></i>`;
-                elToBadge.appendChild(badge);
+                elToUse.toBadge.appendChild(badge);
             }
         }
         if (naColecao.qtde > 0) {
-            const exists = elToBadge.querySelector(".amyp-colecao-badge");
+            const exists = elToUse.toBadge.querySelector(".amyp-colecao-badge");
             if (!exists){
                 const badge = document.createElement("span");
                 badge.className = "amyp-badge amyp-colecao-badge";
                 badge.innerHTML = `<i class="fas fa-book-open"></i> ${naColecao.qtde}${naColecao.multiplas ? "*" : ""}`;
-                elToBadge.appendChild(badge);
+                elToUse.toBadge.appendChild(badge);
             }
         }
         return naColecao;
@@ -1178,7 +1201,7 @@
             background: #fdeae8;
             border: 1px solid #d9534f;
         }
-        .amyp-duplicate-badge a {
+        .amyp-duplicate-link a {
             color: #d9534f;
             text-decoration: none;
         }
@@ -1217,9 +1240,7 @@
         const nameP = nameEl.querySelector("p");
         if (!nameP) return;
 
-        const badge = document.createElement("span");
-        badge.className = "amyp-badge amyp-duplicate-badge";
-
+        const badge = createBadge("span", "amyp-duplicate-badge", "shopping-cart", `&nbsp;${qty}`, "Múltiplos itens");
         const link = document.createElement("a");
         link.classList.add("amyp-duplicated-link");
         link.dataset.idx = idx;
@@ -1228,28 +1249,28 @@
             e.preventDefault();
             scrollToNextDuplicateFrom(e.target);
         };
-        link.innerHTML = `<i class="fas fa-shopping-cart"></i>&nbsp;${qty}`;
-        badge.appendChild(link);
-        badge.title = "Múltiplos itens";
-
-        nameP.appendChild(badge);
+        link.appendChild(badge);
+        nameP.appendChild(link);
     }
 
     function markBoughtItem(itemEl){
-        const nameEl = itemEl.querySelector(".carrinho-item-name");
-        if (!nameEl) return;
+        const elToUse = getElementsToUse(itemEl);
+        if (!elToUse || !elToUse.toBadge) return;
 
         // Verifica se já foi marcado
-        if (nameEl.querySelector(".amyp-bought-badge")) return;
+        if (elToUse.toBadge.querySelector(".amyp-bought-badge")) return;
 
-        const nameP = nameEl.querySelector("p");
-        if (!nameP) return;
+        const badge = createBadge("span", "amyp-bought-badge", "truck", null, "Compra em andamento");
+        elToUse.toBadge.appendChild(badge);
+    }
 
-        const badge = document.createElement("span");
-        badge.className = "amyp-badge amyp-bought-badge";
-        badge.innerHTML = `<i class="fas fa-truck"></i>`;
-        badge.title = "Compra em andamento";
-        nameP.appendChild(badge);
+    function createBadge(elType, className, icon, text, title)
+    {
+        const badge = document.createElement(elType);
+        badge.className = `amyp-badge ${className}`;
+        badge.innerHTML = `<i class="fas fa-${icon}"></i>${text ? text : ""}`;
+        badge.title = title;
+        return badge;
     }
 
     // ── Repaginar────────────────────────────────────────────────────────────────
