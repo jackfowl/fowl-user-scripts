@@ -860,7 +860,7 @@
     }
 
     async function getCarrinhoKeys(){
-        const cards = [];
+        let cards = [];
         const doc = await getDoc(`${window.location.origin}/carrinho`);
         if(doc) {
             cards = [...doc.querySelectorAll(".carrinho-item-name a")].map(c => c.textContent.trim());
@@ -925,7 +925,7 @@
                 const keys = itens.map(el => getColecaoItemKey(el));
                 let idx = 0;
                 let fails = 0;
-
+                let cache = loadColecaoCache();
                 for (const item of itens) {
                     // ⭐ VERIFICA SE FOI SOLICITADO PARAR
                     if (!abortController || abortController.signal.aborted) {
@@ -941,7 +941,6 @@
                     }
 
                     const currentKey = getColecaoItemKey(item);
-                    const t = randomInt(500, 750);
                     btn.textContent = `${Math.trunc(done/total*100)}%`;
                     if (action === Actions.WISH){
                         if (cardsCarrinho.filter(c=> c == currentKey).lenght > 0) markBoughtItem(item);
@@ -956,7 +955,8 @@
                         markBoughtItem(item);
                     }
 
-                    const r = await checkColecaoItem(item);
+                    const t = randomInt(500, 750);
+                    const r = await checkColecaoItem(item, cache);
                     if (r && r.failed) {
                         time += t;
                         console.log(`🔍 Aguardando... ${time}ms`);
@@ -965,7 +965,6 @@
                             await smartWait(time, abortController.signal || null);
                         } catch (e) {
                             if (e.name === 'AbortError') {
-                                console.log("Wait cancelado");
                                 return; // Sai do loop imediatamente
                             }
                         }
@@ -1067,7 +1066,6 @@
     function getElementsToUse(itemEl){
         let anchor;
         let toBadge;
-        console.log(action);
         if (hasCart()){
             anchor = itemEl.querySelector(".carrinho-item-name a");
             if (!anchor) return {err: "not found anchor"};
@@ -1077,18 +1075,16 @@
             anchor = itemEl.querySelector(".card-btns a");
             toBadge = anchor;
         }
-        console.log(anchor, toBadge);
         return {anchor, toBadge};
     }
 
-    async function checkColecaoItem(itemEl) {
-        let naColecao = {qtde: 0, wished: false, multiplas: false, failed: false};
-
+    async function checkColecaoItem(itemEl, cache) {
+        let naColecao = {qtde: 0, wished: false, multiplas: false, failed: false, ignored: false};
+        const isLater = itemEl.closest(".carrinho-mais-tarde");
+        if (isLater) { naColecao.ignored = true; return naColecao; }
         const elToUse = getElementsToUse(itemEl);
         if (!elToUse || !elToUse.toBadge) { console.log("checkColecaoItem no El");return;}
         const key = getColecaoItemKey(itemEl);
-        console.log(key);
-        const cache = loadColecaoCache();
 
         const loading = document.createElement("span");
         loading.className = "amyp-colecao-loading";
@@ -1181,10 +1177,10 @@
 
     // ── Carrinho: detectar itens contidos ────────────────────────────────────────────
     function injectDuplicateStyles() {
-        if (document.getElementById("amyp-duplicate-styles")) return;
+        if (document.getElementById("amyp-duplicated-styles")) return;
 
         const style = document.createElement("style");
-        style.id = "amyp-duplicate-styles";
+        style.id = "amyp-duplicated-styles";
         style.textContent = `
         .amyp-wished-badge {
             color: #A31F55;
@@ -1196,14 +1192,18 @@
             background: #F0E68C;
             border: 1px solid #FFA500;
         }
-        .amyp-duplicate-badge {
+        .amyp-duplicated-badge {
             color: #d9534f;
             background: #fdeae8;
             border: 1px solid #d9534f;
         }
-        .amyp-duplicate-link a {
+        .amyp-duplicated-link {
             color: #d9534f;
             text-decoration: none;
+            display: inline-block; /* garante que o <a> tenha caixa própria */
+        }
+        .amyp-duplicated-link * {
+            pointer-events: none;
         }
     `;
         document.head.appendChild(style);
@@ -1235,12 +1235,12 @@
         if (!nameEl) return;
 
         // Verifica se já foi marcado
-        if (nameEl.querySelector(".amyp-duplicate-badge")) return;
+        if (nameEl.querySelector(".amyp-duplicated-badge")) return;
 
         const nameP = nameEl.querySelector("p");
         if (!nameP) return;
 
-        const badge = createBadge("span", "amyp-duplicate-badge", "shopping-cart", `&nbsp;${qty}`, "Múltiplos itens");
+        const badge = createBadge("span", "amyp-duplicated-badge", "shopping-cart", `&nbsp;${qty}`, "Múltiplos itens");
         const link = document.createElement("a");
         link.classList.add("amyp-duplicated-link");
         link.dataset.idx = idx;
