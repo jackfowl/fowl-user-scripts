@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.8.2
+// @version      1.9.0
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -177,6 +177,25 @@
 		document.querySelectorAll(IDs_TO_REMOVE_USER).forEach(el => el.remove());
 		document.querySelectorAll(CLS_TO_REMOVE_USER).forEach(el => el.remove());
 	}
+	
+	function getOwnText(element) {
+	    return Array.from(element.childNodes)
+	        .filter(node => node.nodeType === Node.TEXT_NODE)
+	        .map(node => node.textContent)
+	        .join("")
+	        .trim();
+	}
+	
+	function addCopyText(element, positionToBe, onClick){
+		try {
+			const icon = document.createElement("i");
+			icon.style.fontSize = ".75em";
+			icon.className = "fas fa-copy";
+			addActionButton(element, positionToBe, icon, onClick);
+		} catch (e) {
+			console.error(e);
+		}
+	}
 
 	function adjustElements() {
 		const header = document.getElementById("header");
@@ -185,6 +204,20 @@
         if (searchBox){
             const btn = document.getElementById("btn-buscar");
             searchBox.append(btn);
+        }
+        const cardName = document.querySelector("#produto-nome");
+        if (cardName){
+            const onClick = function() {
+		        const nome = getOwnText(cardName);
+		        navigator.clipboard.writeText(nome)
+		            .then(() => {
+		                const original = this.innerHTML;
+		                this.innerHTML = `<i class="fas fa-check" style="font-size: .75em;"></i>`;
+		                setTimeout(() => { this.innerHTML = original; }, 1000);
+		            })
+		            .catch(err => console.error("[AwesoMYP] Falha ao copiar:", err));
+		    };
+        	addCopyText(cardName.querySelector("br"), "beforebegin", onClick);
         }
         injectAwesomeStyles();
         injectAwesomeOptions();
@@ -318,15 +351,19 @@
 		select._hiddenOptions = otherOptions;
         if (addShowOtherOptionsTo) addRevealOptionsButton(select, addShowOtherOptionsTo, position);
 	}
-
-	function addRevealOptionsButton(refEl, whereToEl, positionToBe) {
+	
+	function addActionButton(whereToEl, positionToBe, iconRef, onClick){
 		if (!whereToEl) return;
-        let position = positionToBe;
+		let position = positionToBe;
         if (!position) position = "afterend";
-        const icon = document.createElement("i");
-		icon.style.fontSize = ".75em";
-		icon.className = "fas fa-plus";
-
+        
+        let icon = iconRef;
+        if (!icon)
+        {
+	        icon = document.createElement("i");
+			icon.style.fontSize = ".75em";
+			icon.className = "fas fa-dot";
+		}
 		const button = document.createElement("button");
 		button.type = "button";
 		button.className = "btn btn-outline btn-icon btn-rounded btn-hint";
@@ -338,19 +375,28 @@
 		button.style.margin = "0 0 0 4px";
 		button.style.padding = "0";
         button.style.alignSelf = "center";
-		button.onclick = () => {
+        button.onclick = onClick;
+        button.appendChild(icon);
+		whereToEl.insertAdjacentElement(position, button);
+	}
+
+	function addRevealOptionsButton(refEl, whereToEl, positionToBe) {
+		if (!whereToEl) return;
+		const icon = document.createElement("i");
+		icon.style.fontSize = ".75em";
+		icon.className = "fas fa-plus";
+		const onClick = function() {
 			const select = refEl;
 			if (!select) return;
 
 			if (select._hiddenOptions && select._hiddenOptions.length > 0) {
 				select._hiddenOptions.forEach(opt => select.appendChild(opt));
 				select._hiddenOptions = [];
-				button.classList.add("active");
+				this.classList.add("active");
 			}
-            button.remove();
+            this.remove();
 		};
-		button.appendChild(icon);
-		whereToEl.insertAdjacentElement(position, button);
+		addActionButton(whereToEl, positionToBe, icon, onClick);
 	}
 
 	function isEstoque(){
