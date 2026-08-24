@@ -3,6 +3,7 @@
 // @version      1.9.0
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos.
 // @author       JackFowl
+// @license      GPL-3.0
 // @match        *://mypcards.com
 // @match        *://mypcards.com/*
 // @match        *://*.mypcards.com/*
