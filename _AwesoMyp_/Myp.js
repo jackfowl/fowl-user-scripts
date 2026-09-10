@@ -1,9 +1,8 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.9.0
-// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos.
+// @version      1.12.2
+// @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos. Painel de opções configuráveis, incluindo ordenação por nome ou valor. Throttle global de requisições com tratamento de 429.
 // @author       JackFowl
-// @license      GPL-3.0
 // @match        *://mypcards.com
 // @match        *://mypcards.com/*
 // @match        *://*.mypcards.com/*
@@ -12,8 +11,8 @@
 (function () {
 	const CardGame = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
 	const Actions = Object.freeze({ NONE: 0, CART: 1, ORDER: 2, WISH: 3, CREATE: 4, UPDATE: 5 });
-	const IDs_TO_REMOVE = "#dataenvioestoque-link, #btn-salvar-incluir, #main-menu-desktop, #main-menu-mobile, #header-spacer, #estoque-card-search";
-	const CLS_TO_REMOVE = ".wishlist-quantidade, .myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
+	const IDs_TO_REMOVE = "#pwa-install-banner, #dataenvioestoque-link, #btn-salvar-incluir, #main-menu-desktop, #main-menu-mobile, #header-spacer, #estoque-card-search";
+	const CLS_TO_REMOVE = ".card-alta-procura, .wishlist-quantidade, .myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
 	const IDs_TO_REMOVE_USER = "#titulo-cards";
 	const CLS_TO_REMOVE_USER = ".usuario-titulo-com-estrelas";
 	const SEARCH_MAIN_OPTIONS = ["todos", "yugioh", "outros", "pokemon"];
@@ -42,14 +41,152 @@
         });
     }
 
-    function injectAwesomeOptions() {
-        if (document.getElementById("amyp-options-container")) return;
-        const container = document.createElement("div");
-        container.id = "amyp-options-container";
+    // ── Opções configuráveis ────────────────────────────────────────────
+    const SETTINGS_KEY = "amyp-settings";
 
-        const optAutoCompleteCodes = document.createElement("input")
-        optAutoCompleteCodes.setAttribute("type", "checkbox");
-        optAutoCompleteCodes.textContent = "AC Id";
+    const SETTINGS_DEFINITIONS = [
+        {
+            key: "autoCompleteCode",
+            type: "checkbox",
+            label: "Completar código automaticamente",
+            description: "Ao digitar o código da carta, completa com o sufixo do idioma (ex: 1234 → 1234-en).",
+            default: true
+        },
+        {
+            key: "sortBy",
+            type: "select",
+            label: "Ordenar itens do carrinho por",
+            description: "Define a ordem dos itens dentro de cada carrinho.",
+            default: "name",
+            options: [
+                { value: "name", label: "Nome" },
+                { value: "value", label: "Valor" }
+            ]
+        }
+        // novas opções entram aqui
+    ];
+
+    function getDefaultSettings() {
+        const defaults = {};
+        SETTINGS_DEFINITIONS.forEach(def => { defaults[def.key] = def.default });
+        return defaults;
+    }
+
+    function loadSettings() {
+        try {
+            return Object.assign(getDefaultSettings(), JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"));
+        } catch {
+            return getDefaultSettings();
+        }
+    }
+
+    function saveSettings(newSettings) {
+        try {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(newSettings));
+        } catch {}
+    }
+
+    let settings = loadSettings();
+
+    function injectAwesomeOptions() {
+        if (document.getElementById("amyp-options-btn")) return;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.id = "amyp-options-btn";
+        btn.className = "amyp-options-btn";
+        btn.title = "Opções do AwesoMYP";
+        btn.innerHTML = `<i class="fas fa-cog"></i>`;
+        btn.onclick = (e) => {
+            e.preventDefault();
+            openOptionsPanel();
+        };
+
+        document.body.appendChild(btn);
+    }
+
+    function openOptionsPanel() {
+        if (document.getElementById("amyp-options-overlay")) return;
+
+        const overlay = document.createElement("div");
+        overlay.id = "amyp-options-overlay";
+        overlay.className = "amyp-options-overlay";
+        overlay.onclick = (e) => {
+            if (e.target === overlay) closeOptionsPanel();
+        };
+
+        const panel = document.createElement("div");
+        panel.className = "amyp-options-panel";
+
+        const header = document.createElement("div");
+        header.className = "amyp-options-panel-header";
+        const title = document.createElement("span");
+        title.textContent = "Opções do AwesoMYP";
+        const closeBtn = document.createElement("button");
+        closeBtn.type = "button";
+        closeBtn.className = "amyp-options-panel-close";
+        closeBtn.innerHTML = `<i class="fas fa-times"></i>`;
+        closeBtn.onclick = closeOptionsPanel;
+        header.appendChild(title);
+        header.appendChild(closeBtn);
+
+        const body = document.createElement("div");
+        body.className = "amyp-options-panel-body";
+
+        SETTINGS_DEFINITIONS.forEach(def => {
+            const row = document.createElement("label");
+            row.className = "amyp-options-row";
+
+            let control;
+            if (def.type === "select") {
+                control = document.createElement("select");
+                control.className = "amyp-options-select";
+                def.options.forEach(opt => {
+                    const optionEl = document.createElement("option");
+                    optionEl.value = opt.value;
+                    optionEl.textContent = opt.label;
+                    if (settings[def.key] === opt.value) optionEl.selected = true;
+                    control.appendChild(optionEl);
+                });
+                control.onchange = () => {
+                    settings[def.key] = control.value;
+                    saveSettings(settings);
+                };
+            } else {
+                control = document.createElement("input");
+                control.type = "checkbox";
+                control.checked = settings[def.key];
+                control.onchange = () => {
+                    settings[def.key] = control.checked;
+                    saveSettings(settings);
+                };
+            }
+
+            const textWrap = document.createElement("div");
+            textWrap.className = "amyp-options-row-text";
+            const rowLabel = document.createElement("span");
+            rowLabel.className = "amyp-options-row-label";
+            rowLabel.textContent = def.label;
+            const rowDesc = document.createElement("span");
+            rowDesc.className = "amyp-options-row-desc";
+            rowDesc.textContent = def.description;
+            textWrap.appendChild(rowLabel);
+            textWrap.appendChild(rowDesc);
+
+            row.appendChild(control);
+            row.appendChild(textWrap);
+            body.appendChild(row);
+        });
+
+        panel.appendChild(header);
+        panel.appendChild(body);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+    }
+
+    function closeOptionsPanel() {
+        const overlay = document.getElementById("amyp-options-overlay");
+        if (overlay) overlay.remove();
     }
 
     function injectAwesomeStyles() {
@@ -58,6 +195,9 @@
 		const style = document.createElement("style");
 		style.id = "amyp-card-styles";
         style.textContent = `
+  #pwa-install-banner {
+    display: none !important;
+  }
   .estoque-create .content-box .form .grid .btn, .estoque-update .content-box .form .grid .btn {
     margin-top: 6px;
     min-width: unset;
@@ -90,14 +230,24 @@
     justify-content: space-evenly !important;
   }
   .stream-list .stream-item {
-    width: 200px;
-    margin-top: 0px;
+    height: 450px !important;
+    width: 200px !important;
+    margin-top: 0px !important;
     margin-right: 5px;
     margin-bottom: 15px;
-    margin-left: 5px;
+    margin-left: 5px !important;
   }
   .stream-item .card {
     padding: 0px !important;
+  }
+  .card .card-btns {
+    display: block !important;
+    position: absolute !important;
+    left: 0px !important;
+    right: 0px !important;
+    bottom: 0px !important;
+    width: auto !important;
+    margin-top: 0px !important;
   }
   .form-group {
     margin-bottom: 6px !important;
@@ -105,26 +255,14 @@
   .main {
     padding: 6px !important;
   }
+  .btn {
+    min-width: 1em !important;
+  }
   #produto-index {
     gap: 6px !important;
   }
   .other-editions .carrossel-produtos .stream-list {
     flex-wrap: wrap !important;
-  }
-  .card .card-btns {
-    display: block !important;
-  }
-  .amyp-badge {
-    align-items: center;
-    gap: 4px;
-    border-radius: 4px;
-    padding: 2px 7px;
-    margin-top: 4px;
-    margin-left: 8px;
-    font-weight: 600;
-    font-size: 14px;
-    font-family: "Inter", sans-serif;
-    line-height: 1.26;
   }
   .amyp-badge i {
     font-size: 0.95em;
@@ -133,6 +271,97 @@
     color: #2e7d32;
     background: #e8f5e9;
     border: 1px solid #a5d6a7;
+  }
+  .amyp-options-btn {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    background: #fff;
+    color: #555;
+    cursor: pointer;
+    font-size: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .amyp-options-btn:hover {
+    color: #00949d;
+    border-color: #00949d;
+  }
+  .amyp-options-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+  .amyp-options-panel {
+    background: #fff;
+    border-radius: 6px;
+    width: 360px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  }
+  .amyp-options-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    font-weight: 600;
+  }
+  .amyp-options-panel-close {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: #888;
+    font-size: 14px;
+  }
+  .amyp-options-panel-body {
+    padding: 12px 16px;
+    display: grid;
+    gap: 12px;
+  }
+  .amyp-options-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .amyp-options-row input {
+    margin-top: 3px;
+    cursor: pointer;
+  }
+  .amyp-options-select {
+    margin-top: 2px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .amyp-options-row-text {
+    display: flex;
+    flex-direction: column;
+  }
+  .amyp-options-row-label {
+    font-size: 14px;
+    color: #333;
+    font-weight: 500;
+  }
+  .amyp-options-row-desc {
+    font-size: 12px;
+    color: #888;
   }
 `;
         document.head.appendChild(style);
@@ -178,7 +407,7 @@
 		document.querySelectorAll(IDs_TO_REMOVE_USER).forEach(el => el.remove());
 		document.querySelectorAll(CLS_TO_REMOVE_USER).forEach(el => el.remove());
 	}
-	
+
 	function getOwnText(element) {
 	    return Array.from(element.childNodes)
 	        .filter(node => node.nodeType === Node.TEXT_NODE)
@@ -186,7 +415,7 @@
 	        .join("")
 	        .trim();
 	}
-	
+
 	function addCopyText(element, positionToBe, onClick){
 		try {
 			const icon = document.createElement("i");
@@ -274,6 +503,7 @@
 		if (!input) return;
         input.focus();
     	input.addEventListener("input", function () {
+    	    if (!settings.autoCompleteCode) return;
         	switch (tcg) {
 			  case CardGame.YGO:
 			    if (this.value.length === 4 && !this.value.endsWith("-en")) {
@@ -352,12 +582,12 @@
 		select._hiddenOptions = otherOptions;
         if (addShowOtherOptionsTo) addRevealOptionsButton(select, addShowOtherOptionsTo, position);
 	}
-	
+
 	function addActionButton(whereToEl, positionToBe, iconRef, onClick){
 		if (!whereToEl) return;
 		let position = positionToBe;
         if (!position) position = "afterend";
-        
+
         let icon = iconRef;
         if (!icon)
         {
@@ -414,9 +644,10 @@
 
 	function setOnSale(){
 		if (isEstoque()){
-			const select = document.getElementById("estoque-statusestoque");
-			if (!select) return;
-			select.selectedIndex = 0;
+			const radio = document.getElementById("status-v");
+			if (!radio) return;
+            radio.checked = true;
+			radio.dispatchEvent(new Event("change", { bubbles: true }));
 		}
 	}
 
@@ -433,7 +664,19 @@
                 return a ? a.textContent.trim().toLowerCase() : "";
             };
 
-            itens.sort((a, b) => getName(a).localeCompare(getName(b), "pt-BR"));
+            const getValor = el => {
+                const valorEl = el.querySelector(".carrinho-item-valor-total");
+                if (!valorEl) return 0;
+                const raw = valorEl.textContent.replace(/[^\d,]/g, "").replace(",", ".");
+                const v = parseFloat(raw);
+                return isNaN(v) ? 0 : v;
+            };
+
+            if (settings.sortBy === "value") {
+                itens.sort((a, b) => getValor(a) - getValor(b));
+            } else {
+                itens.sort((a, b) => getName(a).localeCompare(getName(b), "pt-BR"));
+            }
 
             // Re-insere na ordem correta (preserva outros elementos do grupo)
             itens.forEach(item => grupo.appendChild(item));
@@ -881,6 +1124,35 @@
         document.head.appendChild(style);
     }
 
+    // ── Rede: gate global de requisições + tratamento de 429 ────────────
+    let lastRequestAt = 0;
+    const MIN_REQUEST_INTERVAL = 1200; // ms mínimos entre QUALQUER requisição (sucesso ou não)
+    const DEFAULT_RETRY_AFTER_MS = 8000; // usado quando o servidor não manda Retry-After
+
+    async function throttledFetch(href) {
+        const elapsed = Date.now() - lastRequestAt;
+        if (elapsed < MIN_REQUEST_INTERVAL) {
+            await wait(MIN_REQUEST_INTERVAL - elapsed + randomInt(0, 300));
+        }
+        lastRequestAt = Date.now();
+
+        const response = await fetch(href, { credentials: "include" });
+
+        if (response.status === 429) {
+            const retryAfterHeader = response.headers.get("Retry-After");
+            const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) * 1000 : DEFAULT_RETRY_AFTER_MS;
+            const err = new Error("HTTP 429");
+            err.status = 429;
+            err.retryAfter = retryAfter;
+            throw err;
+        }
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const html = await response.text();
+        const parser = new DOMParser();
+        return parser.parseFromString(html, "text/html");
+    }
+
     async function getCardsAndamento(){
         const cards = [];
         const span = document.querySelector("#user-nav-toggle .hidden-sm");
@@ -896,8 +1168,14 @@
                             const pc = Array.from(p.querySelectorAll(".carrinho-item-name a")).map(c => c.textContent.trim());
                             cards.push(...pc);
                             break;
-                        } catch {
-                            await wait(1000 * i);
+                        } catch (err) {
+                            if (err && err.status === 429) {
+                                console.warn(`[AwesoMYP] 429 em getCardsAndamento, aguardando ${err.retryAfter}ms`);
+                                await wait(err.retryAfter);
+                                i--;
+                                continue;
+                            }
+                            await wait(2000 * i);
                         }
                     }
                 }
@@ -1002,7 +1280,7 @@
                         markBoughtItem(item);
                     }
 
-                    const t = randomInt(500, 750);
+                    const t = randomInt(1500, 1750);
                     const r = await checkColecaoItem(item, cache);
                     if (r && r.failed) {
                         time += t;
@@ -1093,12 +1371,7 @@
     }
 
     async function getDoc(href) {
-        const response = await fetch(href, { credentials: "include" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const html = await response.text();
-        const parser = new DOMParser();
-        return parser.parseFromString(html, "text/html");
+        return throttledFetch(href);
     }
 
     function getQuantidadeItem(doc){
@@ -1144,7 +1417,7 @@
             try {
                 let time = 100;
                 for (let mainTries = 1; mainTries <= 3; mainTries++){
-                    const mainT = randomInt(500, 1250) * mainTries;
+                    const mainT = randomInt(1000, 2000) * mainTries;
                     try {
                         const doc = await getDoc(elToUse.anchor.href);
                         naColecao.qtde = getQuantidadeItem(doc);
@@ -1161,6 +1434,12 @@
                                         naColecao.qtde += getQuantidadeItem(subDoc);
                                         break;
                                     } catch (err) {
+                                        if (err && err.status === 429) {
+                                            console.warn(`[AwesoMYP] 429 em edição múltipla, aguardando ${err.retryAfter}ms`);
+                                            await wait(err.retryAfter);
+                                            internalTries--;
+                                            continue;
+                                        }
                                         if (internalTries == 3) {
                                             throw(err);
                                         }
@@ -1177,6 +1456,12 @@
                         }
                         break;
                     } catch (err){
+                        if (err && err.status === 429) {
+                            console.warn(`[AwesoMYP] 429 recebido, aguardando ${err.retryAfter}ms`);
+                            await wait(err.retryAfter);
+                            mainTries--;
+                            continue;
+                        }
                         if (naColecao.multiplas){
                             throw(err);
                         }
