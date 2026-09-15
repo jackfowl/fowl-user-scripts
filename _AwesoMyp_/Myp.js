@@ -7,6 +7,9 @@
 // @match        *://mypcards.com/*
 // @match        *://*.mypcards.com/*
 // @icon         https://mypcards.com/android-icon-144x144.png
+// @namespace https://greasyfork.org/users/1628594
+// @downloadURL https://update.greasyfork.org/scripts/588926/_AwesoMYP_.user.js
+// @updateURL https://update.greasyfork.org/scripts/588926/_AwesoMYP_.meta.js
 // ==/UserScript==
 (function () {
 	const CardGame = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
@@ -184,28 +187,6 @@
         document.body.appendChild(overlay);
     }
 
-    // ── Coração/Wishlist: invalidar cache ao clicar ────────────────────────────
-    function injectCoracaoCacheInvalidation() {
-        if (document._amypCoracaoBound) return;
-        document._amypCoracaoBound = true;
-
-        document.addEventListener("click", (e) => {
-            const span = e.target.closest("span.card-coracao");
-            if (!span) return;
-
-            const itemEl = span.closest(".carrinho-item-card") || span.closest(".card");
-            const key = getColecaoItemKey(itemEl);
-            if (!key) return;
-
-            const cache = loadColecaoCache();
-            if (key in cache) {
-                delete cache[key];
-                saveColecaoCache(cache);
-                console.debug(`[AwesoMYP] Cache de coleção invalidado: ${key}`);
-            }
-        });
-    }
-
     function closeOptionsPanel() {
         const overlay = document.getElementById("amyp-options-overlay");
         if (overlay) overlay.remove();
@@ -252,7 +233,6 @@
     justify-content: space-evenly !important;
   }
   .stream-list .stream-item {
-    height: 450px !important;
     width: 200px !important;
     margin-top: 0px !important;
     margin-right: 5px;
@@ -262,14 +242,41 @@
   .stream-item .card {
     padding: 0px !important;
   }
+  .card {
+  position: relative; /* contexto de posicionamento */
+}
+
+.card-img-link {
+  position: relative;
+  display: block;
+}
+
+.card-btns {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  z-index: 2;
+}
+
+.card:hover .card-btns {
+  opacity: 1;
+  visibility: visible;
+}
   .card .card-btns {
-    display: block !important;
-    position: absolute !important;
-    left: 0px !important;
-    right: 0px !important;
-    bottom: 0px !important;
-    width: auto !important;
-    margin-top: 0px !important;
+
+    opacity: 0.15; /* 85% de transparência = 15% de opacidade */
+    transition: opacity 0.3s ease;
+  }
+  .card .card-btns:hover {
+    opacity: 1; /* 0% de transparência = totalmente opaco */
   }
   .form-group {
     margin-bottom: 6px !important;
@@ -471,9 +478,9 @@
 		    };
         	addCopyText(cardName.querySelector("br"), "beforebegin", onClick);
         }
+        moveButtonsToImage();
         injectAwesomeStyles();
         injectAwesomeOptions();
-        injectCoracaoCacheInvalidation();
         if (hasCart()){
             const firstCart = document.querySelectorAll(".carrinho-da-loja")[0];
             if (firstCart){
@@ -520,6 +527,17 @@
             }
         }
 	}
+
+    function moveButtonsToImage(){
+        document.querySelectorAll('.card').forEach(card => {
+            const imgLink = card.querySelector('.card-img-link');
+            const btns = card.querySelector('.card-btns');
+
+            if (imgLink && btns) {
+                imgLink.appendChild(btns);
+            }
+        });
+    }
 
 	function setFocus() {
 		const input = document.getElementById("produtoSearchQuery");
@@ -1193,7 +1211,7 @@
                             break;
                         } catch (err) {
                             if (err && err.status === 429) {
-                                console.warn(`[AwesoMYP] Erro 429 em getCardsAndamento, aguardando ${err.retryAfter}ms`);
+                                console.warn(`[AwesoMYP] 429 em getCardsAndamento, aguardando ${err.retryAfter}ms`);
                                 await wait(err.retryAfter);
                                 i--;
                                 continue;
@@ -1239,7 +1257,7 @@
         btn.onclick = async () => {
             // Se já está rodando, para
             if (abortController) {
-                console.debug("[Awesomyp] Asked to abort");
+                console.log("Asked to abort");
                 abortController.abort();
                 abortController = null;
                 return;
@@ -1277,7 +1295,7 @@
                 for (const item of itens) {
                     // ⭐ VERIFICA SE FOI SOLICITADO PARAR
                     if (!abortController || abortController.signal.aborted) {
-                        console.debug("[AwesoMYP] Parado pelo usuário");
+                        console.log("Parado pelo usuário");
                         btn.textContent = "⚠️ Parado";
                         btn.style.color = "orange";
                         setTimeout(() => {
@@ -1307,7 +1325,8 @@
                     const r = await checkColecaoItem(item, cache);
                     if (r && r.failed) {
                         time += t;
-                        console.debug(`[AwesoMYP] 🔍 Aguardando... ${time}ms`);
+                        console.log(`🔍 Aguardando... ${time}ms`);
+                        // ⭐ PASSA O SIGNAL PARA CANCELAR O WAIT
                         try {
                             await smartWait(time, abortController.signal || null);
                         } catch (e) {
@@ -1318,6 +1337,7 @@
                         time -= Math.floor(t / randomInt(1, 3));
                         fails++;
                     } else {
+                        // ⭐ PASSA O SIGNAL AQUI TAMBÉM
                         try {
                             await smartWait(randomInt(0, 5), abortController.signal || null);
                         } catch (e) {
@@ -1385,15 +1405,10 @@
     }
 
     function getColecaoItemKey(itemEl) {
-        let anchor;
-        if (itemEl){
-            anchor = itemEl.querySelector(".carrinho-item-name a");
-            if (!anchor) anchor = itemEl.querySelector(".card-name h3");
-        }
-        if (!anchor) anchor = document.querySelector("#produto-nome");
+        let anchor = itemEl.querySelector(".carrinho-item-name a");
+        if (!anchor) anchor = itemEl.querySelector(".card-name h3");
         if (!anchor) return null;
-        const key = getOwnText(anchor);
-        return key;
+        return anchor.textContent.trim();
     }
 
     async function getDoc(href) {
@@ -1429,7 +1444,7 @@
         const isLater = itemEl.closest(".carrinho-mais-tarde");
         if (isLater) { naColecao.ignored = true; return naColecao; }
         const elToUse = getElementsToUse(itemEl);
-        if (!elToUse || !elToUse.toBadge) { console.debug("[AwesoMYP] checkColecaoItem no El");return;}
+        if (!elToUse || !elToUse.toBadge) { console.log("checkColecaoItem no El");return;}
         const key = getColecaoItemKey(itemEl);
 
         const loading = document.createElement("span");
@@ -1504,7 +1519,7 @@
                 naColecao.wished = false;
                 naColecao.failed = true;
                 loading.textContent = "erro ao verificar";
-                console.error("[AwesoMYP] checkColecaoItem falhou:", elToUse.anchor.textContent);
+                console.warn("[AwesoMYP] checkColecaoItem falhou:", elToUse.anchor.textContent);
             }
         }
 
