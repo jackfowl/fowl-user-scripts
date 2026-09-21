@@ -7,9 +7,7 @@
 // @match        *://mypcards.com/*
 // @match        *://*.mypcards.com/*
 // @icon         https://mypcards.com/android-icon-144x144.png
-// @namespace https://greasyfork.org/users/1628594
-// @downloadURL https://update.greasyfork.org/scripts/588926/_AwesoMYP_.user.js
-// @updateURL https://update.greasyfork.org/scripts/588926/_AwesoMYP_.meta.js
+// @namespace    https://greasyfork.org/users/1628594
 // ==/UserScript==
 (function () {
 	const CardGame = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
@@ -52,7 +50,7 @@
             key: "autoCompleteCode",
             type: "checkbox",
             label: "Completar código automaticamente",
-            description: "Ao digitar o código da carta, completa com o sufixo do idioma (ex: 1234 → 1234-en).",
+            description: "Ao digitar o código da carta, completa com o sufixo do idioma (ex: CHOR → CHOR-en).",
             default: true
         },
         {
@@ -187,8 +185,8 @@
             textWrap.appendChild(rowLabel);
             textWrap.appendChild(rowDesc);
 
-            row.appendChild(control);
             row.appendChild(textWrap);
+            row.appendChild(control);
             body.appendChild(row);
         });
 
@@ -304,6 +302,12 @@
   .other-editions .carrossel-produtos .stream-list {
     flex-wrap: wrap !important;
   }
+  .amyp-badge {
+    display: inline-block;
+    text-align: center;
+    min-width: 25px;
+    margin-left: 2px;
+  }
   .amyp-badge i {
     font-size: 0.95em;
   }
@@ -346,7 +350,7 @@
   .amyp-options-panel {
     background: #fff;
     border-radius: 6px;
-    width: 360px;
+    width: 440px;
     max-width: 90vw;
     max-height: 80vh;
     overflow-y: auto;
@@ -383,12 +387,18 @@
     cursor: pointer;
   }
   .amyp-options-select {
-    margin-top: 2px;
-    padding: 2px 4px;
+    margin-top: 4px;
+    padding: 4px 24px 4px 8px;
     border-radius: 4px;
     border: 1px solid #ccc;
     font-size: 13px;
     cursor: pointer;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23555' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
   }
   .amyp-options-row-text {
     display: flex;
@@ -467,6 +477,78 @@
 		}
 	}
 
+    function moveButtonsToImage(){
+        document.querySelectorAll('.card').forEach(card => {
+            const imgLink = card.querySelector('.card-img-link');
+            const btns = card.querySelector('.card-btns');
+
+            if (imgLink && btns) {
+                imgLink.appendChild(btns);
+            }
+        });
+        console.debug("Moved buttons to image");
+    }
+
+    function createObservers(){
+        const cardList = document.getElementById("produtos-lista-principal");
+        if (cardList){
+            const obsNewCards = new MutationObserver(mutations => {
+                for (const mutation of mutations) {
+                    if (mutation.addedNodes.length) {
+                        moveButtonsToImage(document);
+                    }
+                }
+            });
+            obsNewCards.observe(cardList, { childList: true, subtree: false });
+        }
+    }
+
+    // ── Coração/Wishlist: invalidar cache ao clicar ────────────────────────────
+    function injectCoracaoCacheInvalidation() {
+        if (document._amypCoracaoBound) return;
+        document._amypCoracaoBound = true;
+
+        document.addEventListener("click", (e) => {
+            const span = e.target.closest("span.card-coracao");
+            if (!span) return;
+            const itemEl = span.closest(".carrinho-item-card") || span.closest(".card");
+            const key = getColecaoItemKey(itemEl);
+            if (!key) return;
+
+            const cache = loadColecaoCache();
+            if (key in cache) {
+                delete cache[key];
+                saveColecaoCache(cache);
+                console.debug(`[AwesoMYP] Cache de coleção invalidado: ${key}`);
+            }
+        });
+    }
+
+    // ── Carrinho: restaurar navegação após excluir item ─────────────────────
+    function injectRemoveNavigationRestore() {
+        if (document._amypRemoveNavBound) return;
+        document._amypRemoveNavBound = true;
+
+        document.addEventListener("click", (e) => {
+            const btn = e.target.closest(".carrinho-remover-item");
+            if (!btn || !lastNavigatedDuplicate) return;
+
+            const itemCard = btn.closest(".carrinho-item-card");
+            if (!itemCard) return;
+
+            const observer = new MutationObserver(() => {
+                if (!document.body.contains(itemCard)) {
+                    observer.disconnect();
+                    scrollToRememberedDuplicate();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            // Segurança: desconecta se a remoção nunca completar
+            setTimeout(() => observer.disconnect(), 5000);
+        });
+    }
+
 	function adjustElements() {
 		const header = document.getElementById("header");
 		if (header) header.style.position = "relative";
@@ -489,9 +571,10 @@
 		    };
         	addCopyText(cardName.querySelector("br"), "beforebegin", onClick);
         }
-        moveButtonsToImage();
         injectAwesomeStyles();
         injectAwesomeOptions();
+        moveButtonsToImage();
+        createObservers();
         injectCoracaoCacheInvalidation();
         injectRemoveNavigationRestore();
         if (hasCart()){
@@ -539,18 +622,7 @@
 			});
             }
         }
-	}
-
-    function moveButtonsToImage(){
-        document.querySelectorAll('.card').forEach(card => {
-            const imgLink = card.querySelector('.card-img-link');
-            const btns = card.querySelector('.card-btns');
-
-            if (imgLink && btns) {
-                imgLink.appendChild(btns);
-            }
-        });
-    }
+	}    
 
 	function setFocus() {
 		const input = document.getElementById("produtoSearchQuery");
@@ -1178,29 +1250,7 @@
         }
     `;
         document.head.appendChild(style);
-    }
-
-    // ── Coração/Wishlist: invalidar cache ao clicar ────────────────────────────
-    function injectCoracaoCacheInvalidation() {
-        if (document._amypCoracaoBound) return;
-        document._amypCoracaoBound = true;
-
-        document.addEventListener("click", (e) => {
-            const span = e.target.closest("span.card-coracao");
-            if (!span) return;
-
-            const itemEl = span.closest(".carrinho-item-card") || span.closest(".card");
-            const key = getColecaoItemKey(itemEl);
-            if (!key) return;
-
-            const cache = loadColecaoCache();
-            if (key in cache) {
-                delete cache[key];
-                saveColecaoCache(cache);
-                console.debug(`[AwesoMYP] Cache de coleção invalidado: ${key}`);
-            }
-        });
-    }
+    }    
 
     // ── Rede: gate global de requisições + tratamento de 429 ────────────
     let lastRequestAt = 0;
@@ -1675,32 +1725,7 @@
             elToScroll.style.color = "#d9534f";
             setTimeout(() => { elToScroll.style.color = color; }, 1000);
         }
-    }
-
-    // ── Carrinho: restaurar navegação após excluir item ─────────────────────
-    function injectRemoveNavigationRestore() {
-        if (document._amypRemoveNavBound) return;
-        document._amypRemoveNavBound = true;
-
-        document.addEventListener("click", (e) => {
-            const btn = e.target.closest(".carrinho-remover-item");
-            if (!btn || !lastNavigatedDuplicate) return;
-
-            const itemCard = btn.closest(".carrinho-item-card");
-            if (!itemCard) return;
-
-            const observer = new MutationObserver(() => {
-                if (!document.body.contains(itemCard)) {
-                    observer.disconnect();
-                    scrollToRememberedDuplicate();
-                }
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-
-            // Segurança: desconecta se a remoção nunca completar
-            setTimeout(() => observer.disconnect(), 5000);
-        });
-    }
+    }    
 
     function markDuplicateItem(itemEl, idx, qty) {
         const nameEl = itemEl.querySelector(".carrinho-item-name");
