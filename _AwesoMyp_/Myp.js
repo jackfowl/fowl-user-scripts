@@ -8,8 +8,6 @@
 // @match        *://*.mypcards.com/*
 // @icon         https://mypcards.com/android-icon-144x144.png
 // @namespace    https://greasyfork.org/users/1628594
-// @downloadURL https://update.greasyfork.org/scripts/588926/_AwesoMYP_.user.js
-// @updateURL https://update.greasyfork.org/scripts/588926/_AwesoMYP_.meta.js
 // ==/UserScript==
 (function () {
 	const CardGame = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
