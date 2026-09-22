@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.12.2
+// @version      1.12.3
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos. Painel de opções configuráveis, incluindo ordenação por nome ou valor. Throttle global de requisições com tratamento de 429.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -8,6 +8,8 @@
 // @match        *://*.mypcards.com/*
 // @icon         https://mypcards.com/android-icon-144x144.png
 // @namespace    https://greasyfork.org/users/1628594
+// @downloadURL https://update.greasyfork.org/scripts/588926/_AwesoMYP_.user.js
+// @updateURL https://update.greasyfork.org/scripts/588926/_AwesoMYP_.meta.js
 // ==/UserScript==
 (function () {
 	const CardGame = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
@@ -1282,7 +1284,7 @@
     }
 
     async function getCardsAndamento(){
-        const cards = [];
+        const cards = {}; // { [chave]: { qty, url } }
         const span = document.querySelector("#user-nav-toggle .hidden-sm");
         if (span) {
             const doc = await getDoc(`${window.location.origin}/${span.textContent.trim()}/compras`);
@@ -1292,9 +1294,28 @@
                 for (const a of andamento){
                     for (let i = 1; i <= 3; i++) {
                         try {
-                            const p = await getDoc(`${window.location.origin}/pedido/${a.dataset.key}`);
-                            const pc = Array.from(p.querySelectorAll(".carrinho-item-name a")).map(c => c.textContent.trim());
-                            cards.push(...pc);
+                            const orderUrl = `${window.location.origin}/pedido/${a.dataset.key}`;
+                            const p = await getDoc(orderUrl);
+                            const itens = Array.from(p.querySelectorAll(".carrinho-item-card"));
+                            itens.forEach(item => {
+                                const anchor = item.querySelector(".carrinho-item-name a");
+                                if (!anchor) return;
+                                const key = getOwnText(anchor);
+                                if (!key) return;
+
+                                let qty = 0;
+                                const qtdEl = item.querySelector(".carrinho-detalhe-item-qtd p span.h2");
+                                if (qtdEl) {
+                                    const q = parseInt(qtdEl.textContent, 10);
+                                    if (!isNaN(q)) qty = q;
+                                }
+                                if (qty === 0) qty = 1; // fallback se não achar quantidade explícita
+
+                                if (!cards[key]) {
+                                    cards[key] = { qty: 0, url: orderUrl };
+                                }
+                                cards[key].qty += qty;
+                            });
                             break;
                         } catch (err) {
                             if (err && err.status === 429) {
@@ -1404,8 +1425,8 @@
                             markDuplicateItem(item, idx, duplicates);
                         }
                     }
-                    if (cardsAndamento.includes(currentKey)) {
-                        markBoughtItem(item);
+                    if (cardsAndamento[currentKey]) {
+                        markBoughtItem(item, cardsAndamento[currentKey]);
                     }
 
                     const t = randomInt(1500, 1750);
@@ -1505,6 +1526,15 @@
 
     async function getDoc(href) {
         return throttledFetch(href);
+    }
+
+    function createBadge(elType, className, icon, text, title)
+    {
+        const badge = document.createElement(elType);
+        badge.className = `amyp-badge ${className}`;
+        badge.innerHTML = `<i class="fas fa-${icon}"></i>${text ? text : ""}`;
+        badge.title = title;
+        return badge;
     }
 
     function getQuantidadeItem(doc){
@@ -1622,18 +1652,14 @@
         if (hasCart() && naColecao.wished) {
             const exists = elToUse.toBadge.querySelector(".amyp-wished-badge");
             if (!exists){
-                const badge = document.createElement("span");
-                badge.className = "amyp-badge amyp-wished-badge";
-                badge.innerHTML = `<i class="fas fa-heart"></i>`;
+                const badge = createBadge("span", "amyp-wished-badge", "heart", '', "Alguma versão desejada");
                 elToUse.toBadge.appendChild(badge);
             }
         }
         if (naColecao.qtde > 0) {
             const exists = elToUse.toBadge.querySelector(".amyp-colecao-badge");
             if (!exists){
-                const badge = document.createElement("span");
-                badge.className = "amyp-badge amyp-colecao-badge";
-                badge.innerHTML = `<i class="fas fa-book-open"></i> ${naColecao.qtde}${naColecao.multiplas ? "*" : ""}`;
+                const badge = createBadge("span", "amyp-colecao-badge", "book-open", `&nbsp;${naColecao.qtde}${naColecao.multiplas ? "*" : ""}`, "Na coleção");
                 elToUse.toBadge.appendChild(badge);
             }
         }
@@ -1668,6 +1694,14 @@
             display: inline-block; /* garante que o <a> tenha caixa própria */
         }
         .amyp-duplicated-link * {
+            pointer-events: none;
+        }
+        .amyp-bought-link {
+            color: inherit;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .amyp-bought-link * {
             pointer-events: none;
         }
     `;
@@ -1725,7 +1759,7 @@
             elToScroll.style.color = "#d9534f";
             setTimeout(() => { elToScroll.style.color = color; }, 1000);
         }
-    }    
+    }
 
     function markDuplicateItem(itemEl, idx, qty) {
         const nameEl = itemEl.querySelector(".carrinho-item-name");
@@ -1751,24 +1785,28 @@
         nameP.appendChild(link);
     }
 
-    function markBoughtItem(itemEl){
+    function markBoughtItem(itemEl, info){
         const elToUse = getElementsToUse(itemEl);
         if (!elToUse || !elToUse.toBadge) return;
 
         // Verifica se já foi marcado
         if (elToUse.toBadge.querySelector(".amyp-bought-badge")) return;
 
-        const badge = createBadge("span", "amyp-bought-badge", "truck", null, "Compra em andamento");
-        elToUse.toBadge.appendChild(badge);
-    }
+        const qtyText = info && info.qty ? `&nbsp;${info.qty}` : "";
+        const badge = createBadge("span", "amyp-bought-badge", "truck", qtyText, "Compra em andamento");
 
-    function createBadge(elType, className, icon, text, title)
-    {
-        const badge = document.createElement(elType);
-        badge.className = `amyp-badge ${className}`;
-        badge.innerHTML = `<i class="fas fa-${icon}"></i>${text ? text : ""}`;
-        badge.title = title;
-        return badge;
+        if (info && info.url) {
+            const link = document.createElement("a");
+            link.href = info.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.className = "amyp-bought-link";
+            link.title = "Ver 1º pedido";
+            link.appendChild(badge);
+            elToUse.toBadge.appendChild(link);
+        } else {
+            elToUse.toBadge.appendChild(badge);
+        }
     }
 
     // ── Repaginar────────────────────────────────────────────────────────────────
