@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         _AwesoMYP_
 // @version      1.12.3
-// @licence      GPL-3
+// @license      GPL-3
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos. Painel de opções configuráveis, incluindo ordenação por nome ou valor. Throttle global de requisições com tratamento de 429.
 // @author       JackFowl
 // @match        *://mypcards.com
