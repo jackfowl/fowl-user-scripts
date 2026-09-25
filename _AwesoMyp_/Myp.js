@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.12.3
-// @license      GPL-3
+// @version      1.12.2
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos. Painel de opções configuráveis, incluindo ordenação por nome ou valor. Throttle global de requisições com tratamento de 429.
 // @author       JackFowl
 // @match        *://mypcards.com
 // @match        *://mypcards.com/*
 // @match        *://*.mypcards.com/*
 // @icon         https://mypcards.com/android-icon-144x144.png
+// @license      GPL-3
 // @namespace    https://greasyfork.org/users/1628594
 // ==/UserScript==
 (function () {
@@ -100,6 +100,30 @@
     }
 
     let settings = loadSettings();
+
+    function injectBackButton() {
+        if (document.getElementById("amyp-back-btn")) return;
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.id = "amyp-back-btn";
+        btn.className = "amyp-back-btn";
+        btn.title = "Voltar ao último card navegado";
+        btn.innerHTML = `<i class="fas fa-undo"></i>`;
+        btn.disabled = !lastNavigatedDuplicate;
+        btn.onclick = (e) => {
+            e.preventDefault();
+            scrollToRememberedDuplicate();
+        };
+
+        document.body.appendChild(btn);
+    }
+
+    function updateBackButtonState() {
+        const btn = document.getElementById("amyp-back-btn");
+        if (!btn) return;
+        btn.disabled = !lastNavigatedDuplicate;
+    }
 
     function injectAwesomeOptions() {
         if (document.getElementById("amyp-options-btn")) return;
@@ -317,6 +341,32 @@
     background: #e8f5e9;
     border: 1px solid #a5d6a7;
   }
+    .amyp-back-btn {
+    position: fixed;
+    bottom: 16px;
+    right: 64px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    background: #fff;
+    color: #555;
+    cursor: pointer;
+    font-size: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .amyp-back-btn:hover:not(:disabled) {
+    color: #00949d;
+    border-color: #00949d;
+  }
+  .amyp-back-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
   .amyp-options-btn {
     position: fixed;
     bottom: 16px;
@@ -525,31 +575,6 @@
         });
     }
 
-    // ── Carrinho: restaurar navegação após excluir item ─────────────────────
-    function injectRemoveNavigationRestore() {
-        if (document._amypRemoveNavBound) return;
-        document._amypRemoveNavBound = true;
-
-        document.addEventListener("click", (e) => {
-            const btn = e.target.closest(".carrinho-remover-item");
-            if (!btn || !lastNavigatedDuplicate) return;
-
-            const itemCard = btn.closest(".carrinho-item-card");
-            if (!itemCard) return;
-
-            const observer = new MutationObserver(() => {
-                if (!document.body.contains(itemCard)) {
-                    observer.disconnect();
-                    scrollToRememberedDuplicate();
-                }
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
-
-            // Segurança: desconecta se a remoção nunca completar
-            setTimeout(() => observer.disconnect(), 5000);
-        });
-    }
-
 	function adjustElements() {
 		const header = document.getElementById("header");
 		if (header) header.style.position = "relative";
@@ -574,10 +599,10 @@
         }
         injectAwesomeStyles();
         injectAwesomeOptions();
+        injectBackButton();
         moveButtonsToImage();
         createObservers();
-        injectCoracaoCacheInvalidation();
-        injectRemoveNavigationRestore();
+        injectCoracaoCacheInvalidation();        
         if (hasCart()){
             const firstCart = document.querySelectorAll(".carrinho-da-loja")[0];
             if (firstCart){
@@ -1170,6 +1195,7 @@
 				if (idx === 0) link.classList.add("active");
 				indexNav.appendChild(link);
 			});
+            addCarrinhoNavigation
 
 			container.appendChild(indexNav);
 		}
@@ -1220,6 +1246,8 @@
             const carrinho = grupo.closest(".carrinho-da-loja");
             carrinho.insertBefore(navGroup, carrinho.querySelector(".box-titulo-com-botao"));
 		});
+
+        observeCarrinhoVisibility(grupos);
 
 		function scrollToCarrinho(idx) {
 			const grupo = grupos[idx];
@@ -1710,11 +1738,54 @@
     // ── Carrinho: lembrar posição de navegação entre duplicados ────────────────
     let lastNavigatedDuplicate = null; // { name, idx }
 
+    function observeCarrinhoVisibility(grupos) {
+        if (document._amypCarrinhoObserverBound) return;
+        document._amypCarrinhoObserverBound = true;
+
+        const ratios = new Map();
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                ratios.set(entry.target, entry.intersectionRatio);
+            });
+
+            let bestGrupo = null;
+            let bestRatio = 0;
+            ratios.forEach((ratio, grupo) => {
+                if (ratio > bestRatio) {
+                    bestRatio = ratio;
+                    bestGrupo = grupo;
+                }
+            });
+
+            if (bestGrupo) {
+                updateCarrinhoIndexForElement(bestGrupo);
+            }
+        }, {
+            root: null,
+            threshold: [0, 0.25, 0.5, 0.75, 1]
+        });
+
+        grupos.forEach(grupo => observer.observe(grupo));
+    }
+
+    function updateCarrinhoIndexForElement(el) {
+        const grupo = el.closest(".carrinho-itens");
+        if (!grupo) return;
+        const grupos = Array.from(document.querySelectorAll(".carrinho-itens"));
+        const idx = grupos.indexOf(grupo);
+        if (idx === -1) return;
+        document.querySelectorAll(".amyp-carrinho-index a[data-carrinho-idx]").forEach((link, i) => {
+            link.classList.toggle("active", i === idx);
+        });
+    }
+
     function rememberNavigatedDuplicate(link) {
         lastNavigatedDuplicate = {
             name: link.dataset.name,
             idx: parseInt(link.dataset.idx, 10)
         };
+        updateBackButtonState();
     }
 
     function scrollToRememberedDuplicate() {
@@ -1723,13 +1794,13 @@
         const links = linksEl.filter(l => l.dataset.name === lastNavigatedDuplicate.name);
 
         if (links.length > 0) {
-            // Prefere o link com o mesmo idx lembrado; senão, o primeiro remanescente
             let target = links.find(l => parseInt(l.dataset.idx, 10) === lastNavigatedDuplicate.idx);
             if (!target) target = links[0];
 
             const elToScroll = target.closest(".carrinho-item-card");
             if (elToScroll) {
                 elToScroll.scrollIntoView({ behavior: "smooth", block: "center" });
+                updateCarrinhoIndexForElement(elToScroll);
                 const color = elToScroll.style.color;
                 elToScroll.style.color = "#d9534f";
                 setTimeout(() => { elToScroll.style.color = color; }, 1000);
@@ -1737,6 +1808,7 @@
         }
 
         lastNavigatedDuplicate = null;
+        updateBackButtonState();
     }
 
     function scrollToNextDuplicateFrom(itemEl) {
@@ -1754,6 +1826,7 @@
                 elToScroll = after[0].closest(".carrinho-item-card");
             }
             elToScroll.scrollIntoView({ behavior: "smooth", block: "center" });
+            updateCarrinhoIndexForElement(elToScroll);
             const color = elToScroll.style.color;
             elToScroll.style.color = "#d9534f";
             setTimeout(() => { elToScroll.style.color = color; }, 1000);
