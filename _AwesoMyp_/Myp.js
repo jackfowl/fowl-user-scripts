@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         _AwesoMYP_
-// @version      1.12.4
+// @version      1.12.5
 // @description  Remover a barra principal, setar foco sempre na pesquisa e reordenar as opções de raridade e idioma. Colapsar itens do carrinho com soma reativa de quantidades e total. Detectar itens contidos. Navegação entre carrinhos. Painel de opções configuráveis, incluindo ordenação por nome ou valor. Throttle global de requisições com tratamento de 429.
 // @author       JackFowl
 // @match        *://mypcards.com
@@ -14,7 +14,7 @@
 	const CardGame = Object.freeze({ NONE: 0, YGO: 1, PKM: 2 });
 	const Actions = Object.freeze({ NONE: 0, CART: 1, ORDER: 2, WISH: 3, CREATE: 4, UPDATE: 5 });
 	const IDs_TO_REMOVE = "#pwa-install-banner, #dataenvioestoque-link, #btn-salvar-incluir, #main-menu-desktop, #main-menu-mobile, #header-spacer, #estoque-card-search";
-	const CLS_TO_REMOVE = ".card-alta-procura, .wishlist-quantidade, .myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
+	const CLS_TO_REMOVE = ".myp-filepond, .graduada-switch, .card-alta-procura, .wishlist-quantidade, .myp-file-upload__dropzone, .estoque-create .autocomplete-icon, .estoque-update .autocomplete-icon, .header-internal, .navegacao-itens";
 	const IDs_TO_REMOVE_USER = "#titulo-cards";
 	const CLS_TO_REMOVE_USER = ".usuario-titulo-com-estrelas";
 	const SEARCH_MAIN_OPTIONS = ["todos", "yugioh", "outros", "pokemon"];
@@ -648,13 +648,13 @@
 			});
             }
         }
-	}    
+	}
 
 	function setFocus() {
-		const input = document.getElementById("produtoSearchQuery");
-		if (!input) return;
-        input.focus();
-    	input.addEventListener("input", function () {
+		const inputSearch = document.getElementById("produtoSearchQuery");
+		if (!inputSearch) return;
+        inputSearch.focus();
+    	inputSearch.addEventListener("input", function () {
     	    if (!settings.autoCompleteCode) return;
         	switch (tcg) {
 			  case CardGame.YGO:
@@ -670,6 +670,10 @@
 			    break;
 			}
         });
+        if (isCreatePage()){
+            const inputPrice = document.getElementById("estoque-precoestoque");
+            if (inputPrice) inputPrice.focus();
+        }
 	}
 
     function setCurrentFlow() {
