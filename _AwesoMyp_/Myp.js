@@ -1321,7 +1321,10 @@
             const doc = await getDoc(`${window.location.origin}/${span.textContent.trim()}/compras`);
             if(doc) {
                 const pedidos = [...doc.querySelectorAll("tbody tr")]
-                const andamento = pedidos.filter(p => !(p.querySelector(".statuspedido").textContent.toLowerCase().startsWith("recebido") || false));
+                const andamento = pedidos.filter(p => {
+				    const status = p.querySelector(".statuspedido").textContent.trim().toLowerCase();
+				    return !(status.startsWith("recebid") || status.startsWith("cancelad"));
+				});
                 for (const a of andamento){
                     for (let i = 1; i <= 3; i++) {
                         try {
