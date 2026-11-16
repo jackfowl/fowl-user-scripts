@@ -75,8 +75,14 @@
                 { value: "asc", label: "Crescente" },
                 { value: "desc", label: "Decrescente" }
             ]
+        },
+        {
+            key: "searchPrefill",
+            type: "text",
+            label: "Texto padrão na pesquisa",
+            description: "Preenche a caixa de pesquisa com este texto e deixa o cursor no final.",
+            default: ""
         }
-        // novas opções entram aqui
     ];
 
     function getDefaultSettings() {
@@ -186,6 +192,15 @@
                     control.appendChild(optionEl);
                 });
                 control.onchange = () => {
+                    settings[def.key] = control.value;
+                    saveSettings(settings);
+                };
+            } else if (def.type === "text") {
+                control = document.createElement("input");
+                control.type = "text";
+                control.className = "amyp-options-text";
+                control.value = settings[def.key] || "";
+                control.oninput = () => {
                     settings[def.key] = control.value;
                     saveSettings(settings);
                 };
@@ -451,6 +466,16 @@
     background-repeat: no-repeat;
     background-position: right 8px center;
   }
+  .amyp-options-text {
+    margin-top: 4px;
+    padding: 4px 8px;
+    width: 160px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 13px;
+    box-sizing: border-box;
+  }
   .amyp-options-row-text {
     display: flex;
     flex-direction: column;
@@ -653,7 +678,12 @@
 	function setFocus() {
 		const inputSearch = document.getElementById("produtoSearchQuery");
 		if (!inputSearch) return;
+        if (settings.searchPrefill && !inputSearch.value) {
+            inputSearch.value = settings.searchPrefill;
+        }
         inputSearch.focus();
+        const end = inputSearch.value.length;
+        inputSearch.setSelectionRange(end, end);
     	inputSearch.addEventListener("input", function () {
     	    if (!settings.autoCompleteCode) return;
         	switch (tcg) {
@@ -1199,8 +1229,6 @@
 				if (idx === 0) link.classList.add("active");
 				indexNav.appendChild(link);
 			});
-            addCarrinhoNavigation
-
 			container.appendChild(indexNav);
 		}
 
